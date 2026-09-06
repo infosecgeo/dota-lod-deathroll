@@ -34,6 +34,7 @@ function LODDeathrollGameMode:InitGameMode()
 
 	CustomGameEventManager:RegisterListener("lod_ban_ability", Dynamic_Wrap(self, "OnBanAbility"))
 	CustomGameEventManager:RegisterListener("lod_reroll_hero", Dynamic_Wrap(self, "OnRerollHero"))
+	CustomGameEventManager:RegisterListener("lod_pick_hero", Dynamic_Wrap(self, "OnPickHero"))
 	CustomGameEventManager:RegisterListener("lod_pick_ability", Dynamic_Wrap(self, "OnPickAbility"))
 end
 
@@ -89,6 +90,11 @@ end
 function LODDeathrollGameMode:OnRerollHero(event)
 	if self.state ~= STATE_HERO_SELECT then return end
 	self.heroSelect:HandleReroll(event.PlayerID)
+end
+
+function LODDeathrollGameMode:OnPickHero(event)
+	if self.state ~= STATE_HERO_SELECT then return end
+	self.heroSelect:HandlePick(event.PlayerID, event.category)
 end
 
 function LODDeathrollGameMode:OnPickAbility(event)
