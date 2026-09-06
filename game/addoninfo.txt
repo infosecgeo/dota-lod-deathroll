@@ -1,0 +1,11 @@
+"AddonInfo"
+{
+	"addon_name"				"dota-lod-deathroll"
+	"addon_display_name"		"LOD Deathroll"
+	"addon_description"			"LOD-style ability draft with ban phase, category hero select, 4+1 draft, extra ultimate, and death-reroll skills."
+	"addon_author"				"infosecgeo"
+	"addon_version"				"1.0.0"
+	"addon_channel"				"dev"
+	"addon_team_count_max"		"2"
+	"addon_team_players_max"	"5"
+}

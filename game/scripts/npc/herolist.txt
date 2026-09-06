@@ -1,0 +1,37 @@
+"CustomHeroList"
+{
+	// Category-based hero pools for the draft hero select phase.
+	// Players are offered one hero from each category and may reroll.
+	"Strength"
+	{
+		"npc_dota_hero_axe"				"1"
+		"npc_dota_hero_pudge"			"1"
+		"npc_dota_hero_sven"			"1"
+		"npc_dota_hero_tidehunter"		"1"
+		"npc_dota_hero_earthshaker"		"1"
+	}
+	"Agility"
+	{
+		"npc_dota_hero_juggernaut"		"1"
+		"npc_dota_hero_phantom_assassin" "1"
+		"npc_dota_hero_drow_ranger"		"1"
+		"npc_dota_hero_riki"			"1"
+		"npc_dota_hero_slark"			"1"
+	}
+	"Intelligence"
+	{
+		"npc_dota_hero_crystal_maiden"	"1"
+		"npc_dota_hero_lina"			"1"
+		"npc_dota_hero_zuus"			"1"
+		"npc_dota_hero_witch_doctor"	"1"
+		"npc_dota_hero_ogre_magi"		"1"
+	}
+	"Universal"
+	{
+		"npc_dota_hero_windrunner"		"1"
+		"npc_dota_hero_mirana"			"1"
+		"npc_dota_hero_invoker"			"1"
+		"npc_dota_hero_rubick"			"1"
+		"npc_dota_hero_pangolier"		"1"
+	}
+}

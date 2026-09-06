@@ -1,0 +1,56 @@
+"DOTAAbilities"
+{
+	"Version"	"1"
+
+	//======================================================================
+	// Draft ability pool
+	// Lists of abilities available for the LOD draft (4 regular + 1 ult)
+	//======================================================================
+	"DraftAbilities"
+	{
+		// Regular (non-ultimate) abilities offered in the 4-slot draft
+		"Regular"
+		{
+			"ability_life_stealer_rage"				"1"
+			"ability_dragon_knight_breathe_fire"	"1"
+			"ability_axe_battle_hunger"				"1"
+			"ability_juggernaut_blade_fury"			"1"
+			"ability_crystal_maiden_crystal_nova"	"1"
+			"ability_lina_dragon_slave"				"1"
+			"ability_zuus_arc_lightning"			"1"
+			"ability_sven_storm_bolt"				"1"
+			"ability_earthshaker_fissure"			"1"
+			"ability_tidehunter_gush"				"1"
+		}
+
+		// Ultimate abilities offered for the +1 slot
+		"Ultimate"
+		{
+			"ability_juggernaut_omni_slash"			"1"
+			"ability_lina_laguna_blade"				"1"
+			"ability_zuus_thundergods_wrath"		"1"
+			"ability_earthshaker_echo_slam"			"1"
+			"ability_tidehunter_ravage"				"1"
+		}
+
+		// Extra ultimate pool including shard skills
+		"ExtraUltimate"
+		{
+			"ability_pudge_dismember"				"1"
+			"ability_axe_culling_blade"				"1"
+			"ability_sven_gods_strength"			"1"
+			"ability_slark_shadow_dance"			"1"
+			"ability_riki_tricks_of_the_trade"		"1"
+		}
+
+		// Death-reroll pool: skills granted when a player dies (deathroll)
+		"DeathReroll"
+		{
+			"ability_drow_ranger_frost_arrows"		"1"
+			"ability_phantom_assassin_stifling_dagger" "1"
+			"ability_mirana_arrow"					"1"
+			"ability_windrunner_shackleshot"		"1"
+			"ability_rubick_telekinesis"			"1"
+		}
+	}
+}
