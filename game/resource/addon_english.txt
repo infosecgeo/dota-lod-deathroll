@@ -1,0 +1,19 @@
+"lang"
+{
+	"Language"	"English"
+	"Tokens"
+	{
+		"addon_game_name"			"LOD Deathroll"
+		"lod_ban_phase"				"Ban Phase"
+		"lod_hero_select"			"Hero Select"
+		"lod_ability_draft"			"Ability Draft"
+		"lod_battle"				"Battle!"
+		"lod_reroll"				"Reroll"
+		"lod_rerolls_left"			"Rerolls left"
+		"lod_ban"					"Ban"
+		"lod_pick"					"Pick"
+		"lod_extra_ultimate"		"Extra Ultimate"
+		"lod_deathroll"				"Deathroll!"
+		"lod_deathroll_desc"		"You died! One skill was rerolled."
+	}
+}

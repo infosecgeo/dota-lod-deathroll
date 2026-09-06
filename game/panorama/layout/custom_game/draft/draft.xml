@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+	<Panel class="DraftRoot" hittest="false">
+
+		<!-- Ban Phase -->
+		<Panel id="BanPhase" class="PhasePanel" hittest="true">
+			<Label text="#lod_ban_phase" class="PhaseTitle"/>
+			<Label id="BanTimer" class="Timer" text=""/>
+			<Panel id="BanAbilityList" class="AbilityGrid"/>
+		</Panel>
+
+		<!-- Hero Select -->
+		<Panel id="HeroSelect" class="PhasePanel" hittest="true">
+			<Label text="#lod_hero_select" class="PhaseTitle"/>
+			<Label id="HeroTimer" class="Timer" text=""/>
+			<Panel id="HeroCategories" class="HeroCategories"/>
+			<Button id="RerollButton" onactivate="OnReroll()">
+				<Label text="#lod_reroll"/>
+			</Button>
+			<Label id="RerollsLeft" text=""/>
+		</Panel>
+
+		<!-- Ability Draft -->
+		<Panel id="AbilityDraft" class="PhasePanel" hittest="true">
+			<Label text="#lod_ability_draft" class="PhaseTitle"/>
+			<Label id="DraftTimer" class="Timer" text=""/>
+			<Panel id="DraftRegularList" class="AbilityGrid"/>
+			<Panel id="DraftUltimateList" class="AbilityGrid"/>
+			<Panel id="DraftPicked" class="PickedPanel"/>
+		</Panel>
+
+		<!-- Deathroll notification -->
+		<Panel id="DeathrollNotice" class="DeathrollNotice">
+			<Label text="#lod_deathroll" class="DeathrollTitle"/>
+			<Label id="DeathrollText" text=""/>
+		</Panel>
+
+	</Panel>
+</root>

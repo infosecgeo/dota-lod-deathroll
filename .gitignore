@@ -1,6 +1,13 @@
 # Compiled Lua sources
 luac.out
 
+# Node.js / MMR server
+node_modules/
+mmr-server/mmr.db
+mmr-server/mmr.db-shm
+mmr-server/mmr.db-wal
+npm-debug.log
+
 # luarocks build files
 *.src.rock
 *.zip
