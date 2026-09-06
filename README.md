@@ -23,7 +23,7 @@ A Dota 2 Arcade custom game: LOD-style ability draft (ban phase, category hero s
 ### Prerequisites
 1. **Dota 2** installed via Steam.
 2. **Dota 2 Workshop Tools** — in Steam: `Library → Dota 2 → DLC → check "Dota 2 Workshop Tools"` → install.
-3. **Node.js LTS** from <https://nodejs.org> (only needed for the MMR server/leaderboard).
+3. **Node.js LTS (22 or newer)** from <https://nodejs.org> (only needed for the MMR server/leaderboard). The bundled SQLite library ships prebuilt binaries for current Node.js LTS releases — no C++/Visual Studio build tools are required. If `npm install` tries to compile with `node-gyp`, your Node.js version is too new or too old; install the current LTS instead.
 
 ### Option A — one-click install (recommended)
 
