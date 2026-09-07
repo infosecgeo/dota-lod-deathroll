@@ -27,6 +27,8 @@ function LODDeathrollGameMode:InitGameMode()
 	self.deathroll = Deathroll()
 	self.mmrClient = MMRClient()
 
+	self:SetupGameRules()
+
 	ListenToGameEvent("game_rules_state_change", Dynamic_Wrap(LODDeathrollGameMode, "OnGameRulesStateChange"), self)
 	ListenToGameEvent("npc_spawned", Dynamic_Wrap(LODDeathrollGameMode, "OnNPCSpawned"), self)
 	ListenToGameEvent("entity_killed", Dynamic_Wrap(LODDeathrollGameMode, "OnEntityKilled"), self)
@@ -36,6 +38,36 @@ function LODDeathrollGameMode:InitGameMode()
 	CustomGameEventManager:RegisterListener("lod_reroll_hero", Dynamic_Wrap(self, "OnRerollHero"))
 	CustomGameEventManager:RegisterListener("lod_pick_hero", Dynamic_Wrap(self, "OnPickHero"))
 	CustomGameEventManager:RegisterListener("lod_pick_ability", Dynamic_Wrap(self, "OnPickAbility"))
+end
+
+function LODDeathrollGameMode:SetupGameRules()
+	-- Teams: 5v5 arcade layout
+	GameRules:SetCustomGameTeamMaxPlayers(DOTA_TEAM_GOODGUYS, 5)
+	GameRules:SetCustomGameTeamMaxPlayers(DOTA_TEAM_BADGUYS, 5)
+
+	-- Allow a normal hero pick first (requires engine herolist.txt with "1" entries).
+	-- Custom category draft still runs later for LOD flow / ability draft.
+	GameRules:SetCustomGameSetupAutoLaunchDelay(3)
+	GameRules:SetHeroSelectionTime(60)
+	GameRules:SetHeroSelectPenaltyTime(0)
+	GameRules:SetStrategyTime(10)
+	GameRules:SetShowcaseTime(0)
+	GameRules:SetPreGameTime(10)
+	GameRules:SetPostGameTime(30)
+	GameRules:SetTreeRegrowTime(60)
+	GameRules:SetGoldPerTick(0)
+	GameRules:SetGoldTickTime(0)
+	GameRules:SetUseUniversalShopMode(true)
+	GameRules:SetSameHeroSelectionEnabled(true)
+
+	local mode = GameRules:GetGameModeEntity()
+	if mode then
+		mode:SetRecommendedItemsDisabled(false)
+		mode:SetBuybackEnabled(true)
+		mode:SetCustomHeroMaxLevel(30)
+		mode:SetFogOfWarDisabled(false)
+		mode:SetUnseenFogOfWarEnabled(true)
+	end
 end
 
 function LODDeathrollGameMode:OnGameRulesStateChange()

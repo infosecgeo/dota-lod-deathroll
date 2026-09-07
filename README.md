@@ -58,6 +58,8 @@ The installer copies the addon into `dota 2 beta/game/dota_addons/dota-lod-death
 4. Ban → pick a hero from each category (2 rerolls) → draft 4 abilities + 1 ultimate → fight!
 
 > **Note:** The hero pool includes **all Dota 2 heroes** (Strength / Agility / Intelligence / Universal). The full draft ability pool lives in `game/scripts/npc/npc_abilities_custom.txt` — edit it to taste.
+>
+> **Heroes not showing / “No Heroes Available”:** Dota only enables heroes listed as `"1"` in the **engine** file `game/scripts/npc/herolist.txt` (root key must be `"herolist"`). Category draft pools are separate in `game/scripts/npc/hero_categories.txt`. After pulling a fix, re-run `install.bat` / `install.sh` so files are copied into `dota_addons/dota-lod-deathroll`, then fully restart Workshop Tools.
 
 ## MMR server
 

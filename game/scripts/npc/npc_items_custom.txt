@@ -1,0 +1,4 @@
+"DOTAAbilities"
+{
+	// Intentionally empty stub required by custom games.
+}
