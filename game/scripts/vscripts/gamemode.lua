@@ -163,14 +163,14 @@ function AILODGameMode:OnGameRulesStateChange()
 	if self.ended then return end
 	if state == DOTA_GAMERULES_STATE_PRE_GAME then
 		self.draftPause = true
-		GameRules:SetGamePaused(true)
+		PauseGame(true)
 		self:BeginMatchFlow()
 	elseif state == DOTA_GAMERULES_STATE_GAME_IN_PROGRESS then
 		if self.spawnReady and GameState:Is(GameState.SPAWN) then
 			GameState:Transition(GameState.PLAYING)
 		else
 			-- Fail closed if another script unexpectedly advances the engine.
-			GameRules:SetGamePaused(true)
+			PauseGame(true)
 			print("[AI-LOD] Refusing engine start before final preparation")
 		end
 	end
@@ -260,7 +260,7 @@ function AILODGameMode:AbortPreparation()
 	self.preparationError = "hero_preparation_failed"
 	print("[AI-LOD] Aborting setup: could not prepare every participant")
 	GameRules:SetSafeToLeave(true)
-	GameRules:SetGamePaused(false)
+	PauseGame(false)
 	-- A broken setup awards neither playing team; use engine postgame, not a
 	-- permanent server pause or a match started with incomplete heroes.
 	GameRules:SetGameWinner(DOTA_TEAM_NEUTRALS)
@@ -302,7 +302,7 @@ function AILODGameMode:StartStrategy()
 		record.strategyReady = PlayerState:IsBot(playerID)
 	end)
 	-- The final entity and kit now exist; unpause permits manual shop transactions.
-	GameRules:SetGamePaused(false)
+	PauseGame(false)
 	self:SendPreparation()
 	Timers:CreateTimer(function()
 		if self.ended or not GameState:Is(GameState.STRATEGY) then return end
@@ -351,7 +351,7 @@ function AILODGameMode:RunSpawnPhase()
 	self:SendPreparation()
 	if GameRules:State_Get() == DOTA_GAMERULES_STATE_GAME_IN_PROGRESS then
 		GameState:Transition(GameState.PLAYING)
-		GameRules:SetGamePaused(false)
+		PauseGame(false)
 	else
 		GameRules:ForceGameStart()
 	end
@@ -445,7 +445,7 @@ function AILODGameMode:FinishMatch()
 	GameState:Transition(GameState.GAME_OVER)
 	GameState:Lock()
 	self:ReleaseWorld()
-	GameRules:SetGamePaused(false)
+	PauseGame(false)
 	local winner = GameRules.GetGameWinner and GameRules:GetGameWinner() or self.ancientWinner
 	if winner == nil then
 		local radiant = Entities:FindByName(nil, "dota_goodguys_fort")
