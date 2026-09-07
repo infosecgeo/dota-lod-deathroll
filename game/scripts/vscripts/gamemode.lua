@@ -76,11 +76,17 @@ function AILODGameMode:SetupGameRules()
 		GameRules:SetPreGameTime(10)
 	end
 
+	-- NOTE: Do not call mode:SetCustomGameForceHero(DEFAULT_HERO) here.
+	-- Forcing a hero makes the engine auto-assign DEFAULT_HERO to every
+	-- player as soon as PRE_GAME starts, bypassing the ban -> hero draft ->
+	-- ability draft -> ultimate draft pipeline entirely (players would
+	-- always spawn as Axe instead of going through the draft). The draft
+	-- pipeline creates each player's hero explicitly via
+	-- HeroManager:EnsureHeroForPlayer() in RunSpawnPhase once the draft
+	-- completes, and the foundation (non-draft) path never needs a forced
+	-- hero either since it relies on vanilla hero selection.
 	local mode = GameRules:GetGameModeEntity()
 	if mode then
-		if self.enableLodDraft and mode.SetCustomGameForceHero then
-			mode:SetCustomGameForceHero(DEFAULT_HERO)
-		end
 		mode:SetRecommendedItemsDisabled(false)
 		mode:SetBuybackEnabled(true)
 		mode:SetCustomHeroMaxLevel(30)
