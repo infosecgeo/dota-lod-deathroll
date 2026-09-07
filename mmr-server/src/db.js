@@ -1,13 +1,14 @@
 // db.js
-// SQLite3 database layer for the LOD Deathroll MMR backend.
+// SQLite database layer for the LOD Deathroll MMR backend.
+// Uses Node.js built-in node:sqlite (no native compile / Visual Studio required).
 
-const Database = require("better-sqlite3");
+const { DatabaseSync } = require("node:sqlite");
 const path = require("path");
 
 const DB_PATH = path.join(__dirname, "..", "mmr.db");
-const db = new Database(DB_PATH);
+const db = new DatabaseSync(DB_PATH);
 
-db.pragma("journal_mode = WAL");
+db.exec("PRAGMA journal_mode = WAL");
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS players (
@@ -42,6 +43,31 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_match_players_match ON match_players(match_id);
   CREATE INDEX IF NOT EXISTS idx_match_players_player ON match_players(player_id);
 `);
+
+/**
+ * better-sqlite3-compatible transaction helper for node:sqlite.
+ * Usage: transaction(() => { ... })()
+ */
+function transaction(fn) {
+  return (...args) => {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = fn(...args);
+      db.exec("COMMIT");
+      return result;
+    } catch (err) {
+      try {
+        db.exec("ROLLBACK");
+      } catch (_) {
+        /* ignore rollback errors */
+      }
+      throw err;
+    }
+  };
+}
+
+// Attach so callers can use db.db.transaction(...) like better-sqlite3.
+db.transaction = transaction;
 
 const getPlayerBySteamId = db.prepare("SELECT * FROM players WHERE steam_id = ?");
 const insertPlayer = db.prepare(

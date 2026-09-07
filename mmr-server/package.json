@@ -4,11 +4,13 @@
   "description": "Local MMR backend for the LOD Deathroll Dota 2 custom game",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "start": "node --disable-warning=ExperimentalWarning src/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3",
     "express": "^5.1.0"
   }
 }

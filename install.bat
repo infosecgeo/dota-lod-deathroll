@@ -42,7 +42,33 @@ echo [2/3] Installing MMR server dependencies ...
 pushd "%~dp0mmr-server"
 where npm >nul 2>nul
 if errorlevel 1 (
-	echo ERROR: Node.js/npm not found. Install Node.js LTS from https://nodejs.org and re-run.
+	echo ERROR: Node.js/npm not found. Install Node.js LTS 22.5+ from https://nodejs.org and re-run.
+	popd
+	pause
+	exit /b 1
+)
+REM Require Node 22.5+ (built-in node:sqlite). No Visual Studio / node-gyp needed.
+for /f "tokens=1 delims=v" %%V in ('node -v 2^>nul') do set "NODE_VER=%%V"
+for /f "tokens=1,2 delims=." %%A in ("%NODE_VER%") do (
+	set "NODE_MAJOR=%%A"
+	set "NODE_MINOR=%%B"
+)
+if not defined NODE_MAJOR (
+	echo ERROR: Could not read Node.js version. Install Node.js LTS 22.5+ from https://nodejs.org
+	popd
+	pause
+	exit /b 1
+)
+if %NODE_MAJOR% LSS 22 (
+	echo ERROR: Node.js %NODE_VER% is too old. Need 22.5 or newer ^(LTS recommended^).
+	echo Download: https://nodejs.org
+	popd
+	pause
+	exit /b 1
+)
+if %NODE_MAJOR% EQU 22 if %NODE_MINOR% LSS 5 (
+	echo ERROR: Node.js %NODE_VER% is too old. Need 22.5 or newer ^(LTS recommended^).
+	echo Download: https://nodejs.org
 	popd
 	pause
 	exit /b 1
@@ -50,6 +76,7 @@ if errorlevel 1 (
 call npm install
 if errorlevel 1 (
 	echo ERROR: npm install failed.
+	echo Tip: use Node.js LTS from https://nodejs.org — this project needs no C++ build tools.
 	popd
 	pause
 	exit /b 1
