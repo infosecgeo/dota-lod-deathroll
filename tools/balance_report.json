@@ -1,0 +1,115 @@
+{
+  "samples": 500,
+  "max_budget": 28,
+  "score_min": 20,
+  "score_max": 29,
+  "score_avg": 24.37,
+  "over_budget_pct": 0.8,
+  "top_over_budget": [
+    {
+      "kit": [
+        "winter_wyvern_splinter_blast",
+        "weaver_shukuchi",
+        "bristleback_bristleback",
+        "phoenix_sun_ray",
+        "doom_bringer_doom",
+        "undying_flesh_golem"
+      ],
+      "score": 29,
+      "categories": [
+        "nuke",
+        "mobility",
+        "defense",
+        "nuke",
+        "disable",
+        "transform"
+      ]
+    },
+    {
+      "kit": [
+        "antimage_blink",
+        "snapfire_scatterblast",
+        "shadow_shaman_ether_shock",
+        "nyx_assassin_spiked_carapace",
+        "chaos_knight_phantasm",
+        "magnataur_reverse_polarity"
+      ],
+      "score": 29,
+      "categories": [
+        "mobility",
+        "nuke",
+        "nuke",
+        "defense",
+        "summon",
+        "disable"
+      ]
+    },
+    {
+      "kit": [
+        "morphling_waveform",
+        "hoodwink_scurry",
+        "queenofpain_blink",
+        "techies_suicide",
+        "warlock_rain_of_chaos",
+        "tidehunter_ravage"
+      ],
+      "score": 29,
+      "categories": [
+        "mobility",
+        "mobility",
+        "mobility",
+        "nuke",
+        "summon",
+        "disable"
+      ]
+    },
+    {
+      "kit": [
+        "tinker_laser",
+        "razor_static_link",
+        "terrorblade_conjure_image",
+        "obsidian_destroyer_astral_imprisonment",
+        "nevermore_requiem",
+        "warlock_rain_of_chaos"
+      ],
+      "score": 29,
+      "categories": [
+        "blind",
+        "drain",
+        "illusion",
+        "disable",
+        "nuke",
+        "summon"
+      ]
+    }
+  ],
+  "category_frequency": {
+    "nuke": 509,
+    "disable": 342,
+    "mobility": 291,
+    "aoe": 221,
+    "defense": 158,
+    "buff": 151,
+    "dot": 94,
+    "heal": 83,
+    "dps": 79,
+    "summon": 78,
+    "root": 71,
+    "transform": 71,
+    "debuff": 66,
+    "slow": 63,
+    "crit": 56,
+    "survival": 54,
+    "silence": 50,
+    "invis": 50,
+    "utility": 49,
+    "control": 42
+  },
+  "hero_counts": {
+    "Strength": 41,
+    "Agility": 36,
+    "Intelligence": 41
+  },
+  "ability_count": 472,
+  "blacklist_count": 20
+}

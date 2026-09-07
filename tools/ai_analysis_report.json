@@ -1,0 +1,773 @@
+{
+  "samples": 400,
+  "flagged_pct": 12.5,
+  "high_risk_kits": [
+    {
+      "kit": [
+        "pugna_nether_ward",
+        "dragon_knight_dragon_tail",
+        "witch_doctor_paralyzing_cask",
+        "dawnbreaker_celestial_hammer",
+        "spectre_haunt",
+        "puck_dream_coil"
+      ],
+      "power": 28,
+      "risk": 22,
+      "tags": {
+        "manaburn": 1,
+        "disable": 3,
+        "mobility": 1,
+        "global": 1
+      },
+      "flags": {
+        "multi_disable": true,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "slark_essence_shift",
+        "mars_spear",
+        "grimstroke_phantom_embrace",
+        "bane_nightmare",
+        "mirana_invis",
+        "rattletrap_hookshot"
+      ],
+      "power": 26,
+      "risk": 22,
+      "tags": {
+        "steal": 1,
+        "disable": 3,
+        "invis": 1,
+        "mobility": 1
+      },
+      "flags": {
+        "multi_disable": true,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "treant_living_armor",
+        "ancient_apparition_cold_feet",
+        "storm_spirit_electric_vortex",
+        "broodmother_silken_bola",
+        "bane_fiends_grip",
+        "oracle_false_promise"
+      ],
+      "power": 26,
+      "risk": 22,
+      "tags": {
+        "defense": 1,
+        "disable": 3,
+        "root": 1,
+        "save": 1
+      },
+      "flags": {
+        "multi_disable": true,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "night_stalker_void",
+        "undying_soul_rip",
+        "primal_beast_uproar",
+        "jakiro_ice_path",
+        "magnataur_reverse_polarity",
+        "void_spirit_astral_step"
+      ],
+      "power": 26,
+      "risk": 21,
+      "tags": {
+        "disable": 3,
+        "heal": 1,
+        "buff": 1,
+        "mobility": 1
+      },
+      "flags": {
+        "multi_disable": true,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "magnataur_skewer",
+        "ogre_magi_fireblast",
+        "sandking_burrowstrike",
+        "axe_berserkers_call",
+        "sniper_assassinate",
+        "chen_hand_of_god"
+      ],
+      "power": 24,
+      "risk": 21,
+      "tags": {
+        "mobility": 1,
+        "disable": 3,
+        "nuke": 1,
+        "heal": 1
+      },
+      "flags": {
+        "multi_disable": true,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "leshrac_lightning_storm",
+        "tiny_toss",
+        "spirit_breaker_charge_of_darkness",
+        "nyx_assassin_impale",
+        "magnataur_reverse_polarity",
+        "pudge_dismember"
+      ],
+      "power": 27,
+      "risk": 19,
+      "tags": {
+        "nuke": 2,
+        "mobility": 1,
+        "disable": 3
+      },
+      "flags": {
+        "multi_disable": true,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "razor_plasma_field",
+        "centaur_hoof_stomp",
+        "skeleton_king_hellfire_blast",
+        "tusk_snowball",
+        "mirana_invis",
+        "pudge_dismember"
+      ],
+      "power": 23,
+      "risk": 19,
+      "tags": {
+        "aoe": 1,
+        "disable": 3,
+        "mobility": 1,
+        "invis": 1
+      },
+      "flags": {
+        "multi_disable": true,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "centaur_return",
+        "hoodwink_bushwhack",
+        "sandking_burrowstrike",
+        "omniknight_hammer_of_purity",
+        "chaos_knight_phantasm",
+        "tidehunter_ravage"
+      ],
+      "power": 27,
+      "risk": 17,
+      "tags": {
+        "defense": 1,
+        "disable": 3,
+        "nuke": 1,
+        "summon": 1
+      },
+      "flags": {
+        "multi_disable": true,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "bristleback_bristleback",
+        "bane_nightmare",
+        "kunkka_torrent",
+        "bane_brain_sap",
+        "lina_laguna_blade",
+        "magnataur_reverse_polarity"
+      ],
+      "power": 27,
+      "risk": 17,
+      "tags": {
+        "defense": 1,
+        "disable": 3,
+        "nuke": 2
+      },
+      "flags": {
+        "multi_disable": true,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "nyx_assassin_impale",
+        "tidehunter_anchor_smash",
+        "sandking_sand_storm",
+        "mirana_arrow",
+        "tidehunter_ravage",
+        "marci_unleash"
+      ],
+      "power": 27,
+      "risk": 17,
+      "tags": {
+        "disable": 3,
+        "aoe": 1,
+        "invis": 1,
+        "buff": 1
+      },
+      "flags": {
+        "multi_disable": true,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "jakiro_liquid_fire",
+        "dragon_knight_dragon_tail",
+        "snapfire_firesnap_cookie",
+        "gyrocopter_homing_missile",
+        "mars_arena_of_blood",
+        "storm_spirit_ball_lightning"
+      ],
+      "power": 26,
+      "risk": 17,
+      "tags": {
+        "dot": 1,
+        "disable": 2,
+        "mobility": 2,
+        "control": 1
+      },
+      "flags": {
+        "multi_disable": true,
+        "multi_mobility": true,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "lion_impale",
+        "furion_sprout",
+        "puck_waning_rift",
+        "invoker_cold_snap",
+        "dark_seer_wall_of_replica",
+        "bane_fiends_grip"
+      ],
+      "power": 25,
+      "risk": 17,
+      "tags": {
+        "disable": 3,
+        "root": 1,
+        "silence": 1,
+        "illusion": 1
+      },
+      "flags": {
+        "multi_disable": true,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "antimage_mana_break",
+        "juggernaut_blade_dance",
+        "invoker_cold_snap",
+        "puck_phase_shift",
+        "oracle_false_promise",
+        "medusa_stone_gaze"
+      ],
+      "power": 25,
+      "risk": 15,
+      "tags": {
+        "manaburn": 1,
+        "crit": 1,
+        "disable": 2,
+        "defense": 1,
+        "save": 1
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "magnataur_skewer",
+        "keeper_of_the_light_blinding_light",
+        "invoker_ghost_walk",
+        "slark_essence_shift",
+        "beastmaster_primal_roar",
+        "pudge_dismember"
+      ],
+      "power": 24,
+      "risk": 15,
+      "tags": {
+        "mobility": 1,
+        "miss": 1,
+        "invis": 1,
+        "steal": 1,
+        "disable": 2
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "huskar_berserkers_blood",
+        "tidehunter_kraken_shell",
+        "tiny_toss",
+        "primal_beast_onslaught",
+        "beastmaster_primal_roar",
+        "primal_beast_pulverize"
+      ],
+      "power": 26,
+      "risk": 14,
+      "tags": {
+        "survival": 1,
+        "defense": 1,
+        "nuke": 1,
+        "mobility": 1,
+        "disable": 2
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    }
+  ],
+  "high_power_kits": [
+    {
+      "kit": [
+        "undying_tombstone",
+        "axe_berserkers_call",
+        "gyrocopter_flak_cannon",
+        "bounty_hunter_jinada",
+        "juggernaut_omni_slash",
+        "doom_bringer_doom"
+      ],
+      "power": 29,
+      "risk": 12,
+      "tags": {
+        "summon": 1,
+        "disable": 2,
+        "aoe": 1,
+        "crit": 1,
+        "mobility": 1
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "phantom_lancer_doppelwalk",
+        "meepo_poof",
+        "storm_spirit_electric_vortex",
+        "leshrac_diabolic_edict",
+        "nevermore_requiem",
+        "magnataur_reverse_polarity"
+      ],
+      "power": 29,
+      "risk": 12,
+      "tags": {
+        "illusion": 1,
+        "mobility": 1,
+        "disable": 2,
+        "aoe": 1,
+        "nuke": 1
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "disruptor_kinetic_field",
+        "undying_tombstone",
+        "morphling_waveform",
+        "dawnbreaker_fire_wreath",
+        "slark_shadow_dance",
+        "lich_chain_frost"
+      ],
+      "power": 29,
+      "risk": 7,
+      "tags": {
+        "control": 1,
+        "summon": 1,
+        "mobility": 1,
+        "aoe": 1,
+        "survival": 1,
+        "nuke": 1
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "pugna_nether_ward",
+        "dragon_knight_dragon_tail",
+        "witch_doctor_paralyzing_cask",
+        "dawnbreaker_celestial_hammer",
+        "spectre_haunt",
+        "puck_dream_coil"
+      ],
+      "power": 28,
+      "risk": 22,
+      "tags": {
+        "manaburn": 1,
+        "disable": 3,
+        "mobility": 1,
+        "global": 1
+      },
+      "flags": {
+        "multi_disable": true,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "dazzle_shallow_grave",
+        "luna_lucent_beam",
+        "doom_bringer_infernal_blade",
+        "beastmaster_inner_beast",
+        "tidehunter_ravage",
+        "spectre_haunt"
+      ],
+      "power": 28,
+      "risk": 11,
+      "tags": {
+        "save": 1,
+        "nuke": 2,
+        "buff": 1,
+        "disable": 1,
+        "global": 1
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "marci_grapple",
+        "elder_titan_echo_stomp",
+        "shadow_demon_shadow_poison",
+        "kunkka_x_marks_the_spot",
+        "omniknight_guardian_angel",
+        "tinker_rearm"
+      ],
+      "power": 28,
+      "risk": 10,
+      "tags": {
+        "disable": 2,
+        "dot": 1,
+        "utility": 2,
+        "defense": 1
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "tiny_tree_grab",
+        "sandking_burrowstrike",
+        "pudge_meat_hook",
+        "terrorblade_metamorphosis",
+        "razor_eye_of_the_storm",
+        "lich_chain_frost"
+      ],
+      "power": 28,
+      "risk": 10,
+      "tags": {
+        "buff": 1,
+        "disable": 2,
+        "transform": 1,
+        "dps": 1,
+        "nuke": 1
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "primal_beast_trample",
+        "earthshaker_fissure",
+        "bane_nightmare",
+        "undying_decay",
+        "nevermore_requiem",
+        "muerta_pierce_the_veil"
+      ],
+      "power": 28,
+      "risk": 10,
+      "tags": {
+        "aoe": 1,
+        "disable": 2,
+        "nuke": 2,
+        "buff": 1
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "life_stealer_rage",
+        "naga_siren_rip_tide",
+        "disruptor_kinetic_field",
+        "rattletrap_battery_assault",
+        "weaver_time_lapse",
+        "disruptor_static_storm"
+      ],
+      "power": 28,
+      "risk": 9,
+      "tags": {
+        "bkb": 1,
+        "aoe": 1,
+        "control": 1,
+        "disable": 1,
+        "rewind": 1,
+        "silence": 1
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "lone_druid_spirit_link",
+        "witch_doctor_maledict",
+        "queenofpain_blink",
+        "pudge_meat_hook",
+        "alchemist_chemical_rage",
+        "slark_shadow_dance"
+      ],
+      "power": 28,
+      "risk": 7,
+      "tags": {
+        "buff": 2,
+        "amp": 1,
+        "mobility": 1,
+        "disable": 1,
+        "survival": 1
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "medusa_gorgon_grasp",
+        "juggernaut_healing_ward",
+        "primal_beast_onslaught",
+        "shadow_shaman_shackles",
+        "lion_finger_of_death",
+        "earthshaker_echo_slam"
+      ],
+      "power": 28,
+      "risk": 7,
+      "tags": {
+        "root": 1,
+        "heal": 1,
+        "mobility": 1,
+        "disable": 1,
+        "nuke": 2
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "chaos_knight_chaos_strike",
+        "puck_phase_shift",
+        "pudge_meat_hook",
+        "gyrocopter_flak_cannon",
+        "morphling_replicate",
+        "omniknight_guardian_angel"
+      ],
+      "power": 28,
+      "risk": 6,
+      "tags": {
+        "crit": 1,
+        "defense": 2,
+        "disable": 1,
+        "aoe": 1,
+        "clone": 1
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "pangolier_shield_crash",
+        "legion_commander_press_the_attack",
+        "spectre_spectral_dagger",
+        "sniper_shrapnel",
+        "tinker_rearm",
+        "earthshaker_echo_slam"
+      ],
+      "power": 28,
+      "risk": 4,
+      "tags": {
+        "defense": 1,
+        "heal": 1,
+        "mobility": 1,
+        "aoe": 1,
+        "utility": 1,
+        "nuke": 1
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "shadow_demon_disseminate",
+        "crystal_maiden_frostbite",
+        "earthshaker_fissure",
+        "legion_commander_overwhelming_odds",
+        "snapfire_mortimer_kisses",
+        "nevermore_requiem"
+      ],
+      "power": 28,
+      "risk": 3,
+      "tags": {
+        "debuff": 1,
+        "root": 1,
+        "disable": 1,
+        "nuke": 3
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    },
+    {
+      "kit": [
+        "crystal_maiden_frostbite",
+        "earthshaker_fissure",
+        "leshrac_diabolic_edict",
+        "necrolyte_death_pulse",
+        "earthshaker_echo_slam",
+        "necrolyte_reapers_scythe"
+      ],
+      "power": 28,
+      "risk": 3,
+      "tags": {
+        "root": 1,
+        "disable": 1,
+        "aoe": 2,
+        "nuke": 2
+      },
+      "flags": {
+        "multi_disable": false,
+        "multi_mobility": false,
+        "save_stack": false
+      }
+    }
+  ],
+  "category_coverage": {
+    "nuke": 76,
+    "disable": 54,
+    "mobility": 44,
+    "aoe": 35,
+    "defense": 25,
+    "buff": 25,
+    "dot": 15,
+    "heal": 14,
+    "debuff": 12,
+    "summon": 11,
+    "root": 11,
+    "dps": 11,
+    "control": 10,
+    "crit": 9,
+    "silence": 9,
+    "survival": 8,
+    "slow": 8,
+    "utility": 7,
+    "transform": 7,
+    "invis": 7,
+    "lifesteal": 6,
+    "illusion": 6,
+    "aura": 5,
+    "manaburn": 5,
+    "passive": 4,
+    "cleave": 3,
+    "bash": 3,
+    "clone": 3,
+    "drain": 3,
+    "purge": 3,
+    "farm": 2,
+    "vision": 2,
+    "fear": 2,
+    "steal": 2,
+    "global": 2,
+    "link": 2,
+    "mana": 2,
+    "hex": 2,
+    "save": 2,
+    "amp": 2,
+    "duel": 1,
+    "bkb": 1,
+    "tank": 1,
+    "bounce": 1,
+    "evasion": 1,
+    "range": 1,
+    "swap": 1,
+    "rewind": 1,
+    "miss": 1,
+    "blind": 1,
+    "pull": 1,
+    "trap": 1,
+    "attack": 1
+  },
+  "recommendations": [
+    "Keep MaxBudget near simulated average + 1\u03c3 to curb stacked disables.",
+    "Blacklist intrinsic/transform ultimates (already seeded in blacklist.kv).",
+    "Death draft should prefer mid power_score basics to avoid snowball.",
+    "Prefer offering mixed categories in ability draft sample windows."
+  ]
+}

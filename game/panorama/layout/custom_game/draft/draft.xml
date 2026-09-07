@@ -7,20 +7,19 @@
 	<scripts>
 		<include src="file://{resources}/scripts/custom_game/draft.js" />
 	</scripts>
-	<!-- hittest=false so V0.1 gameplay is never blocked if a panel leaks -->
 	<Panel class="DraftRoot" hittest="false">
 
 		<Panel id="BanPhase" class="PhasePanel" hittest="true">
 			<Label text="#ai_lod_ban" class="PhaseTitle"/>
 			<Label id="BanTimer" class="Timer" text=""/>
-			<Label text="Choose a hero to ban" class="PhaseHint"/>
+			<Label text="Ban 1 hero from the full pool (server-validated)" class="PhaseHint"/>
 			<Panel id="BanAbilityList" class="AbilityGrid"/>
 		</Panel>
 
 		<Panel id="HeroSelect" class="PhasePanel" hittest="true">
 			<Label text="#ai_lod_hero_draft" class="PhaseTitle"/>
 			<Label id="HeroTimer" class="Timer" text=""/>
-			<Label text="3 categories · 4 heroes — pick one" class="PhaseHint"/>
+			<Label text="Random 3x4 offers — pick 1 hero (1 reroll per category)" class="PhaseHint"/>
 			<Panel id="HeroCategories" class="HeroCategories"/>
 			<Label id="RerollsLeft" text=""/>
 		</Panel>
@@ -28,12 +27,42 @@
 		<Panel id="AbilityDraft" class="PhasePanel" hittest="true">
 			<Label text="#ai_lod_ability_draft" class="PhaseTitle"/>
 			<Label id="DraftTimer" class="Timer" text=""/>
-			<Label text="Draft 4 skills + 1 ultimate" class="PhaseHint"/>
+			<Label text="Draft 4 basic skills + 1 ultimate" class="PhaseHint"/>
 			<Label text="Regular abilities" class="SectionTitle"/>
 			<Panel id="DraftRegularList" class="AbilityGrid"/>
 			<Label text="Ultimates" class="SectionTitle"/>
 			<Panel id="DraftUltimateList" class="AbilityGrid"/>
 			<Panel id="DraftPicked" class="PickedPanel"/>
+		</Panel>
+
+		<Panel id="UltDraft" class="PhasePanel" hittest="true">
+			<Label text="#ai_lod_ultimate_draft" class="PhaseTitle"/>
+			<Label id="UltTimer" class="Timer" text=""/>
+			<Label text="Choose a 2nd ultimate (6 options) then Confirm lock" class="PhaseHint"/>
+			<Panel id="UltChoiceList" class="AbilityGrid"/>
+			<Label id="UltSelected" text="" class="PhaseHint"/>
+			<Button id="UltConfirmBtn" class="ConfirmButton">
+				<Label text="Confirm Lock"/>
+			</Button>
+		</Panel>
+
+		<Panel id="DeathDraft" class="PhasePanel" hittest="true">
+			<Label text="#ai_lod_respawn_draft" class="PhaseTitle"/>
+			<Label id="DeathTimer" class="Timer" text=""/>
+			<Label text="Pick a slot to replace, then a new ability (3 rerolls)" class="PhaseHint"/>
+			<Label text="Your slots" class="SectionTitle"/>
+			<Panel id="DeathSlotList" class="AbilityGrid"/>
+			<Label text="Replacement offers" class="SectionTitle"/>
+			<Panel id="DeathOfferList" class="AbilityGrid"/>
+			<Label id="DeathRerolls" text="" class="PhaseHint"/>
+			<Panel class="DeathActions" hittest="true">
+				<Button id="DeathRerollBtn" class="ConfirmButton">
+					<Label text="Reroll offers"/>
+				</Button>
+				<Button id="DeathConfirmBtn" class="ConfirmButton">
+					<Label text="Confirm replace"/>
+				</Button>
+			</Panel>
 		</Panel>
 
 		<Panel id="DeathrollNotice" class="DeathrollNotice">

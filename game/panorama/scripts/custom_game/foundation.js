@@ -1,4 +1,4 @@
-// foundation.js — V0.1 state badge. Does not block input.
+// foundation.js — state badge. Does not block input.
 "use strict";
 
 var badge = $("#StateBadge");
@@ -12,7 +12,6 @@ function SetStateText(name) {
 
 GameEvents.Subscribe("ai_lod_state", function (event) {
 	SetStateText(event.name);
-	// Hide badge once playing so HUD stays clean.
 	if (badge && event.name === "PLAYING") {
 		badge.AddClass("Hidden");
 	} else if (badge) {

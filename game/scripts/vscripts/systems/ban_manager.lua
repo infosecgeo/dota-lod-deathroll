@@ -1,5 +1,5 @@
 -- systems/ban_manager.lua
--- Phase 3 stub: 50s hero ban. Not started in V0.1.
+-- Phase 3: 50s server-validated hero ban.
 
 BanManager = BanManager or class({})
 
@@ -15,7 +15,7 @@ function BanManager:constructor(heroManager)
 end
 
 function BanManager:Start(onComplete)
-	print("[BanManager] Start (Phase 3) — hero ban, " .. BAN_TIME .. "s")
+	print("[BanManager] Start — hero ban, " .. BAN_TIME .. "s")
 	self.onComplete = onComplete
 	self.finished = false
 	self.playerBanned = {}
@@ -25,9 +25,10 @@ function BanManager:Start(onComplete)
 		self.heroManager:LoadPool()
 	end
 
+	local pool = (self.heroManager and self.heroManager:LoadPool()) or {}
 	CustomGameEventManager:Send_ServerToAllClients("ai_lod_ban_start", {
 		time = BAN_TIME,
-		heroes = table.concat((self.heroManager and self.heroManager:LoadPool()) or {}, ","),
+		heroes = table.concat(pool, ","),
 	})
 
 	self.timer = Timers:CreateTimer(function()
@@ -56,17 +57,34 @@ function BanManager:HandleBan(playerID, heroName)
 	end
 
 	self.playerBanned[playerID] = true
+	local record = PlayerState and PlayerState:Get(playerID)
+	if record then
+		table.insert(record.bannedHeroes, heroName)
+	end
 	CustomGameEventManager:Send_ServerToAllClients("ai_lod_hero_banned", {
 		playerID = playerID,
 		hero = heroName,
 	})
+
+	-- Early finish when every connected player has banned
+	local pending = false
+	if PlayerState then
+		PlayerState:ForEachConnected(function(pid, _)
+			if not self.playerBanned[pid] then pending = true end
+		end)
+	end
+	if not pending then
+		self:Finish()
+	end
 end
 
 function BanManager:Finish()
 	if self.finished then return end
 	self.finished = true
-	if self.timer then Timers:RemoveTimer(self.timer) end
-	CustomGameEventManager:Send_ServerToAllClients("ai_lod_ban_end", {})
+	if self.timer then Timers:RemoveTimer(self.timer) self.timer = nil end
+	CustomGameEventManager:Send_ServerToAllClients("ai_lod_ban_end", {
+		banned = table.concat((self.heroManager and self.heroManager:GetBannedList()) or {}, ","),
+	})
 	print("[BanManager] Complete")
 	if self.onComplete then self.onComplete() end
 end
