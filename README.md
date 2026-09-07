@@ -1,5 +1,5 @@
 # dota-lod-deathroll
-A Dota 2 Arcade custom game: LOD-style ability draft (ban phase, category hero select with rerolls, 4+1 draft, extra ultimate incl. shard skills, death-reroll skills) + local MMR backend (Node.js + built-in SQLite) with ranking dashboard.
+A Dota 2 Arcade custom game: LOD-style ability draft (ban phase, 3×4 category hero pool, 4+1 skill draft, extra ultimate, death-reroll skills) + local MMR backend (Node.js + built-in SQLite) with ranking dashboard.
 
 ## Project layout
 
@@ -11,19 +11,32 @@ A Dota 2 Arcade custom game: LOD-style ability draft (ban phase, category hero s
   - `resource/` — localization
 - **`mmr-server/`** — local MMR backend (Node.js + Express + built-in SQLite) with a ranking dashboard
 
-## Game flow
+## Game flow (LOD, not normal picking)
 
-1. **Ban phase** — every player bans one ability.
-2. **Hero select** — players are offered one hero per category (Strength / Agility / Intelligence / Universal) and can reroll up to 2 times.
-3. **Ability draft (4+1)** — each player drafts 4 regular abilities and 1 ultimate.
-4. **Battle** — everyone also receives a random extra ultimate (including shard skills). On death, one of your skills is randomly rerolled from the death-reroll pool (30 s cooldown).
+Vanilla hero selection is **disabled**. The match uses a custom LOD draft UI instead:
+
+1. **Ban phase** — every player bans one ability from the pool.
+2. **Hero select** — fixed pool of **3 categories × 4 heroes** (12 total). Pick one hero.
+3. **Ability draft (4+1)** — draft **4 regular abilities + 1 ultimate** from skills belonging to that hero pool.
+4. **Battle** — your hero is spawned with drafted skills; everyone also gets a random extra ultimate. On death, one skill is randomly rerolled (30 s cooldown).
+
+### Hero pool
+
+| Strength | Agility | Intelligence |
+|----------|---------|--------------|
+| Axe | Juggernaut | Lina |
+| Pudge | Phantom Assassin | Lion |
+| Sven | Sniper | Crystal Maiden |
+| Legion Commander | Anti-Mage | Zeus |
+
+Edit `game/scripts/npc/hero_categories.txt` (Lua pools) and `game/scripts/npc/herolist.txt` (engine enable list) together. Ability pools for those heroes live in `game/scripts/npc/draft_abilities.txt` (real Dota ability names).
 
 ## Installation — step by step (plug and play)
 
 ### Prerequisites
 1. **Dota 2** installed via Steam.
 2. **Dota 2 Workshop Tools** — in Steam: `Library → Dota 2 → DLC → check "Dota 2 Workshop Tools"` → install.
-3. **Node.js LTS (22.5 or newer)** from <https://nodejs.org> (only needed for the MMR server/leaderboard). The MMR server uses Node’s built-in SQLite (`node:sqlite`) — **no C++/Visual Studio build tools** and no native `node-gyp` compile. Prefer the current **LTS** installer from nodejs.org (not bleeding-edge Current if you hit odd issues).
+3. **Node.js LTS (22.5 or newer)** from <https://nodejs.org> (only needed for the MMR server/leaderboard). The MMR server uses Node’s built-in SQLite (`node:sqlite`) — **no C++/Visual Studio build tools**. Prefer the current **LTS** installer from nodejs.org.
 
 ### Option A — one-click install (recommended)
 
@@ -55,11 +68,9 @@ The installer copies the addon into `dota 2 beta/game/dota_addons/dota-lod-death
    - Dashboard opens at <http://localhost:3000>
 2. **Launch Dota 2 with Workshop Tools**: right-click Dota 2 in Steam → `Play… → Launch Dota 2 - Tools` (or add `-tools` to launch options).
 3. In the Workshop Tools launcher, select **`dota-lod-deathroll`** and press **Play** (or run `dota_launch_custom_game dota-lod-deathroll dota` from the tools console).
-4. Ban → pick a hero from each category (2 rerolls) → draft 4 abilities + 1 ultimate → fight!
+4. You should **not** see normal hero picking. Instead: Ban → pick a hero from the 3×4 pool → draft 4 abilities + 1 ultimate → fight!
 
-> **Note:** The hero pool includes **all Dota 2 heroes** (Strength / Agility / Intelligence / Universal). The full draft ability pool lives in `game/scripts/npc/npc_abilities_custom.txt` — edit it to taste.
->
-> **Heroes not showing / “No Heroes Available”:** Dota only enables heroes listed as `"1"` in the **engine** file `game/scripts/npc/herolist.txt` (root key must be `"herolist"`). Category draft pools are separate in `game/scripts/npc/hero_categories.txt`. After pulling a fix, re-run `install.bat` / `install.sh` so files are copied into `dota_addons/dota-lod-deathroll`, then fully restart Workshop Tools.
+> **Still seeing normal picking / empty UI?** Re-run `install.bat` / `install.sh` so files are copied into `dota_addons/dota-lod-deathroll`, then fully restart Workshop Tools. Confirm `herolist.txt` root key is `"herolist"` with `"1"` entries, and that `draft_abilities.txt` is present next to it.
 
 ## MMR server
 

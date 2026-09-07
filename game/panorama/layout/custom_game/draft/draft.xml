@@ -13,17 +13,16 @@
 		<Panel id="BanPhase" class="PhasePanel" hittest="true">
 			<Label text="#lod_ban_phase" class="PhaseTitle"/>
 			<Label id="BanTimer" class="Timer" text=""/>
+			<Label text="Ban 1 ability from the LOD pool" class="PhaseHint"/>
 			<Panel id="BanAbilityList" class="AbilityGrid"/>
 		</Panel>
 
-		<!-- Hero Select -->
+		<!-- Hero Select: 3 categories × 4 heroes -->
 		<Panel id="HeroSelect" class="PhasePanel" hittest="true">
 			<Label text="#lod_hero_select" class="PhaseTitle"/>
 			<Label id="HeroTimer" class="Timer" text=""/>
+			<Label text="3 categories · 4 heroes each — pick one" class="PhaseHint"/>
 			<Panel id="HeroCategories" class="HeroCategories"/>
-			<Button id="RerollButton" onactivate="OnReroll()">
-				<Label text="#lod_reroll"/>
-			</Button>
 			<Label id="RerollsLeft" text=""/>
 		</Panel>
 
@@ -31,7 +30,10 @@
 		<Panel id="AbilityDraft" class="PhasePanel" hittest="true">
 			<Label text="#lod_ability_draft" class="PhaseTitle"/>
 			<Label id="DraftTimer" class="Timer" text=""/>
+			<Label text="Draft 4 skills + 1 ultimate from the hero pool" class="PhaseHint"/>
+			<Label text="Regular abilities" class="SectionTitle"/>
 			<Panel id="DraftRegularList" class="AbilityGrid"/>
+			<Label text="Ultimates" class="SectionTitle"/>
 			<Panel id="DraftUltimateList" class="AbilityGrid"/>
 			<Panel id="DraftPicked" class="PickedPanel"/>
 		</Panel>
