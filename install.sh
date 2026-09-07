@@ -27,7 +27,16 @@ cp -r "$SCRIPT_DIR/game/." "$DOTA_DIR/game/dota_addons/dota-lod-deathroll/"
 
 echo "[2/2] Installing MMR server dependencies ..."
 if ! command -v npm >/dev/null 2>&1; then
-	echo "ERROR: Node.js/npm not found. Install Node.js LTS from https://nodejs.org and re-run."
+	echo "ERROR: Node.js/npm not found. Install Node.js LTS 22.5+ from https://nodejs.org and re-run."
+	exit 1
+fi
+# Require Node 22.5+ (built-in node:sqlite). No native compile / Visual Studio needed.
+NODE_VER="$(node -v 2>/dev/null | sed 's/^v//')"
+NODE_MAJOR="${NODE_VER%%.*}"
+NODE_MINOR="$(echo "$NODE_VER" | cut -d. -f2)"
+if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 22 ] || { [ "$NODE_MAJOR" -eq 22 ] && [ "${NODE_MINOR:-0}" -lt 5 ]; }; then
+	echo "ERROR: Node.js ${NODE_VER:-unknown} is too old. Need 22.5 or newer (LTS recommended)."
+	echo "Download: https://nodejs.org"
 	exit 1
 fi
 (cd "$SCRIPT_DIR/mmr-server" && npm install)

@@ -1,5 +1,5 @@
 # dota-lod-deathroll
-A Dota 2 Arcade custom game: LOD-style ability draft (ban phase, category hero select with rerolls, 4+1 draft, extra ultimate incl. shard skills, death-reroll skills) + local MMR backend (Node.js + SQLite3) with ranking dashboard.
+A Dota 2 Arcade custom game: LOD-style ability draft (ban phase, category hero select with rerolls, 4+1 draft, extra ultimate incl. shard skills, death-reroll skills) + local MMR backend (Node.js + built-in SQLite) with ranking dashboard.
 
 ## Project layout
 
@@ -9,7 +9,7 @@ A Dota 2 Arcade custom game: LOD-style ability draft (ban phase, category hero s
   - `scripts/vscripts/` — server-side Lua game logic
   - `panorama/` — draft UI (XML/CSS/JS)
   - `resource/` — localization
-- **`mmr-server/`** — local MMR backend (Node.js + Express + SQLite3) with a ranking dashboard
+- **`mmr-server/`** — local MMR backend (Node.js + Express + built-in SQLite) with a ranking dashboard
 
 ## Game flow
 
@@ -23,7 +23,7 @@ A Dota 2 Arcade custom game: LOD-style ability draft (ban phase, category hero s
 ### Prerequisites
 1. **Dota 2** installed via Steam.
 2. **Dota 2 Workshop Tools** — in Steam: `Library → Dota 2 → DLC → check "Dota 2 Workshop Tools"` → install.
-3. **Node.js LTS (22 or newer)** from <https://nodejs.org> (only needed for the MMR server/leaderboard). The bundled SQLite library ships prebuilt binaries for current Node.js LTS releases — no C++/Visual Studio build tools are required. If `npm install` tries to compile with `node-gyp`, your Node.js version is too new or too old; install the current LTS instead.
+3. **Node.js LTS (22.5 or newer)** from <https://nodejs.org> (only needed for the MMR server/leaderboard). The MMR server uses Node’s built-in SQLite (`node:sqlite`) — **no C++/Visual Studio build tools** and no native `node-gyp` compile. Prefer the current **LTS** installer from nodejs.org (not bleeding-edge Current if you hit odd issues).
 
 ### Option A — one-click install (recommended)
 
