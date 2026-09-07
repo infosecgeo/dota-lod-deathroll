@@ -1,0 +1,106 @@
+"DraftAbilities"
+{
+	// Ability pools for the 12-hero LOD pool (real Dota ability names).
+	// Kept separate from npc_abilities_custom.txt so the engine does not
+	// treat pool tables as ability definitions.
+
+	"Regular"
+	{
+		// Axe
+		"axe_berserkers_call"						"1"
+		"axe_battle_hunger"							"1"
+		"axe_counter_helix"							"1"
+		// Pudge
+		"pudge_meat_hook"							"1"
+		"pudge_rot"									"1"
+		"pudge_flesh_heap"							"1"
+		// Sven
+		"sven_storm_bolt"							"1"
+		"sven_great_cleave"							"1"
+		"sven_warcry"								"1"
+		// Legion Commander
+		"legion_commander_overwhelming_odds"		"1"
+		"legion_commander_press_the_attack"			"1"
+		"legion_commander_moment_of_courage"		"1"
+		// Juggernaut
+		"juggernaut_blade_fury"						"1"
+		"juggernaut_healing_ward"					"1"
+		"juggernaut_blade_dance"					"1"
+		// Phantom Assassin
+		"phantom_assassin_stifling_dagger"			"1"
+		"phantom_assassin_phantom_strike"			"1"
+		"phantom_assassin_blur"						"1"
+		// Sniper
+		"sniper_shrapnel"							"1"
+		"sniper_headshot"							"1"
+		"sniper_take_aim"							"1"
+		// Anti-Mage
+		"antimage_mana_break"						"1"
+		"antimage_blink"							"1"
+		"antimage_counterspell"						"1"
+		// Lina
+		"lina_dragon_slave"							"1"
+		"lina_light_strike_array"					"1"
+		"lina_fiery_soul"							"1"
+		// Lion
+		"lion_impale"								"1"
+		"lion_voodoo"								"1"
+		"lion_mana_drain"							"1"
+		// Crystal Maiden
+		"crystal_maiden_crystal_nova"				"1"
+		"crystal_maiden_frostbite"					"1"
+		"crystal_maiden_brilliance_aura"			"1"
+		// Zeus
+		"zuus_arc_lightning"						"1"
+		"zuus_lightning_bolt"						"1"
+		"zuus_heavenly_jump"						"1"
+	}
+
+	"Ultimate"
+	{
+		"axe_culling_blade"							"1"
+		"pudge_dismember"							"1"
+		"sven_gods_strength"						"1"
+		"legion_commander_duel"						"1"
+		"juggernaut_omni_slash"						"1"
+		"phantom_assassin_coup_de_grace"			"1"
+		"sniper_assassinate"						"1"
+		"antimage_mana_void"						"1"
+		"lina_laguna_blade"							"1"
+		"lion_finger_of_death"						"1"
+		"crystal_maiden_freezing_field"				"1"
+		"zuus_thundergods_wrath"					"1"
+	}
+
+	"ExtraUltimate"
+	{
+		"axe_culling_blade"							"1"
+		"pudge_dismember"							"1"
+		"sven_gods_strength"						"1"
+		"legion_commander_duel"						"1"
+		"juggernaut_omni_slash"						"1"
+		"phantom_assassin_coup_de_grace"			"1"
+		"sniper_assassinate"						"1"
+		"antimage_mana_void"						"1"
+		"lina_laguna_blade"							"1"
+		"lion_finger_of_death"						"1"
+		"crystal_maiden_freezing_field"				"1"
+		"zuus_thundergods_wrath"					"1"
+	}
+
+	"DeathReroll"
+	{
+		"axe_battle_hunger"							"1"
+		"pudge_meat_hook"							"1"
+		"sven_storm_bolt"							"1"
+		"legion_commander_overwhelming_odds"		"1"
+		"juggernaut_blade_fury"						"1"
+		"phantom_assassin_stifling_dagger"			"1"
+		"sniper_shrapnel"							"1"
+		"antimage_blink"							"1"
+		"lina_dragon_slave"							"1"
+		"lion_impale"								"1"
+		"crystal_maiden_frostbite"					"1"
+		"zuus_arc_lightning"						"1"
+	}
+}

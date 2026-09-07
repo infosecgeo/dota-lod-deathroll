@@ -1,6 +1,6 @@
 -- extra_ult.lua
 -- Assigns each player an extra ultimate from the ExtraUltimate pool
--- (including shard skills) once the draft completes.
+-- once the draft completes.
 
 ExtraUlt = ExtraUlt or class({})
 
@@ -8,15 +8,25 @@ function ExtraUlt:constructor()
 	self.assigned = {} -- playerID -> abilityName
 end
 
-function ExtraUlt:AssignExtraUltimates()
-	print("[ExtraUlt] Assigning extra ultimates")
-	local kv = LoadKeyValues("scripts/npc/npc_abilities_custom.txt")
+function ExtraUlt:LoadPool()
+	local kv = LoadKeyValues("scripts/npc/draft_abilities.txt")
+	if kv and kv.DraftAbilities then
+		kv = kv.DraftAbilities
+	end
 	local pool = {}
-	if kv and kv.DraftAbilities and kv.DraftAbilities.ExtraUltimate then
-		for ability, _ in pairs(kv.DraftAbilities.ExtraUltimate) do
-			table.insert(pool, ability)
+	if kv and kv.ExtraUltimate then
+		for ability, enabled in pairs(kv.ExtraUltimate) do
+			if enabled == 1 or enabled == "1" then
+				table.insert(pool, ability)
+			end
 		end
 	end
+	return pool
+end
+
+function ExtraUlt:AssignExtraUltimates()
+	print("[ExtraUlt] Assigning extra ultimates")
+	local pool = self:LoadPool()
 	if #pool == 0 then
 		print("[ExtraUlt] WARNING: ExtraUltimate pool is empty")
 		return
@@ -28,12 +38,17 @@ function ExtraUlt:AssignExtraUltimates()
 			self.assigned[playerID] = ability
 			local hero = PlayerResource:GetSelectedHeroEntity(playerID)
 			if hero then
-				hero:AddAbility(ability)
+				local ab = hero:AddAbility(ability)
+				if ab then
+					ab:SetLevel(1)
+					ab:SetHidden(false)
+				end
 			end
 			local player = PlayerResource:GetPlayer(playerID)
 			if player then
 				CustomGameEventManager:Send_ServerToPlayer(player, "lod_extra_ult", { ability = ability })
 			end
+			print(string.format("[ExtraUlt] Player %d got %s", playerID, ability))
 		end
 	end
 end

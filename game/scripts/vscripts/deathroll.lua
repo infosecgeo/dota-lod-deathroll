@@ -40,11 +40,16 @@ function Deathroll:OnHeroDeath(hero)
 end
 
 function Deathroll:RollAbility()
-	local kv = LoadKeyValues("scripts/npc/npc_abilities_custom.txt")
+	local kv = LoadKeyValues("scripts/npc/draft_abilities.txt")
+	if kv and kv.DraftAbilities then
+		kv = kv.DraftAbilities
+	end
 	local pool = {}
-	if kv and kv.DraftAbilities and kv.DraftAbilities.DeathReroll then
-		for ability, _ in pairs(kv.DraftAbilities.DeathReroll) do
-			table.insert(pool, ability)
+	if kv and kv.DeathReroll then
+		for ability, enabled in pairs(kv.DeathReroll) do
+			if enabled == 1 or enabled == "1" then
+				table.insert(pool, ability)
+			end
 		end
 	end
 	if #pool == 0 then return nil end
@@ -55,15 +60,25 @@ function Deathroll:ReplaceRandomAbility(hero, newAbility)
 	local candidates = {}
 	for i = 0, hero:GetAbilityCount() - 1 do
 		local ability = hero:GetAbilityByIndex(i)
-		if ability and not ability:IsHidden() then
-			table.insert(candidates, ability)
+		if ability and not ability:IsHidden() and not ability:IsAttributeBonus() then
+			local name = ability:GetAbilityName()
+			if name and name ~= "generic_hidden" and not string.find(name, "special_bonus") then
+				table.insert(candidates, ability)
+			end
 		end
 	end
 	if #candidates == 0 then return nil end
 
 	local victim = candidates[RandomInt(1, #candidates)]
 	local name = victim:GetAbilityName()
+	local level = victim:GetLevel()
+	if level < 1 then level = 1 end
+
 	hero:RemoveAbility(name)
-	hero:AddAbility(newAbility)
+	local ab = hero:AddAbility(newAbility)
+	if ab then
+		ab:SetLevel(math.min(level, ab:GetMaxLevel()))
+		ab:SetHidden(false)
+	end
 	return name
 end

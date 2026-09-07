@@ -5,8 +5,8 @@
 	{
 		"addon_game_name"			"LOD Deathroll"
 		"lod_ban_phase"				"Ban Phase"
-		"lod_hero_select"			"Hero Select"
-		"lod_ability_draft"			"Ability Draft"
+		"lod_hero_select"			"Hero Select (3×4 Pool)"
+		"lod_ability_draft"			"Ability Draft (LOD)"
 		"lod_battle"				"Battle!"
 		"lod_reroll"				"Reroll"
 		"lod_rerolls_left"			"Rerolls left"

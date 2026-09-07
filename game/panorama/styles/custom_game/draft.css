@@ -6,11 +6,16 @@
 
 .PhasePanel
 {
-	width: 800px;
+	width: 900px;
+	max-height: 90%;
 	horizontal-align: center;
 	vertical-align: center;
 	flow-children: down;
 	visibility: collapse;
+	background-color: #0d0d0dee;
+	padding: 20px;
+	border: 2px solid #5a4a2a;
+	border-radius: 6px;
 }
 
 .PhasePanel.Visible
@@ -23,7 +28,25 @@
 	font-size: 32px;
 	color: white;
 	horizontal-align: center;
-	margin-bottom: 12px;
+	margin-bottom: 8px;
+	font-weight: bold;
+}
+
+.PhaseHint
+{
+	font-size: 16px;
+	color: #bbb;
+	horizontal-align: center;
+	margin-bottom: 10px;
+}
+
+.SectionTitle
+{
+	font-size: 18px;
+	color: #ddc;
+	horizontal-align: center;
+	margin-top: 8px;
+	margin-bottom: 4px;
 }
 
 .Timer
@@ -36,58 +59,96 @@
 
 .AbilityGrid
 {
-	flow-children: down-wrap;
-	max-height: 400px;
+	flow-children: right-wrap;
+	max-height: 280px;
+	width: 100%;
 	horizontal-align: center;
+	overflow: squish scroll;
 }
 
 .AbilityGrid Button
 {
 	margin: 4px;
 	padding: 6px 12px;
-	background-color: #333;
+	background-color: #2a2a35;
 	border: 1px solid #666;
+	border-radius: 3px;
+}
+
+.AbilityGrid Button Label
+{
+	color: #eee;
+	font-size: 14px;
 }
 
 .AbilityGrid Button:hover
 {
-	background-color: #555;
+	background-color: #3d3d55;
+	border-color: #aaa;
 }
 
 .AbilityGrid Button.Banned
 {
 	background-color: #511;
 	border-color: #a33;
+	opacity: 0.55;
 }
 
 .HeroCategories
 {
 	flow-children: right;
 	horizontal-align: center;
+	width: 100%;
 }
 
 .HeroCategory
 {
 	flow-children: down;
 	margin: 8px;
-	padding: 8px;
-	background-color: #222;
+	padding: 12px;
+	background-color: #1a1a24;
 	border: 1px solid #555;
+	border-radius: 4px;
+	width: fill-parent-flow(1);
+	min-width: 200px;
 }
 
 .HeroCategory Label.CategoryName
 {
-	color: #aaa;
-	font-size: 14px;
-	margin-bottom: 4px;
+	color: #f0c060;
+	font-size: 18px;
+	margin-bottom: 8px;
+	horizontal-align: center;
+	font-weight: bold;
 }
 
 .HeroCategory Button
 {
-	margin-top: 4px;
-	padding: 4px 8px;
-	background-color: #333;
+	margin-top: 6px;
+	padding: 8px 10px;
+	background-color: #2a2a35;
 	border: 1px solid #666;
+	border-radius: 3px;
+	width: 100%;
+}
+
+.HeroCategory Button Label
+{
+	color: #eee;
+	font-size: 15px;
+	horizontal-align: center;
+}
+
+.HeroCategory Button:hover
+{
+	background-color: #3d4a35;
+	border-color: #8c8;
+}
+
+.HeroCategory Button.Selected
+{
+	background-color: #2a5530;
+	border-color: #6d6;
 }
 
 .PickedPanel
@@ -103,6 +164,14 @@
 	font-size: 14px;
 }
 
+#RerollsLeft
+{
+	color: #ccc;
+	font-size: 14px;
+	horizontal-align: center;
+	margin-top: 10px;
+}
+
 .DeathrollNotice
 {
 	horizontal-align: center;
@@ -110,6 +179,9 @@
 	margin-top: 120px;
 	flow-children: down;
 	visibility: collapse;
+	background-color: #200808ee;
+	padding: 16px 24px;
+	border: 1px solid #a33;
 }
 
 .DeathrollNotice.Visible
