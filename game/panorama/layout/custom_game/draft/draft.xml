@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
+	<styles>
+		<include src="s2r://panorama/styles/dotastyles.vcss_c" />
+		<include src="file://{resources}/styles/custom_game/draft.css" />
+	</styles>
+	<scripts>
+		<include src="file://{resources}/scripts/custom_game/draft.js" />
+	</scripts>
 	<Panel class="DraftRoot" hittest="false">
 
 		<!-- Ban Phase -->

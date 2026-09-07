@@ -1,0 +1,5 @@
+"DOTAHeroes"
+{
+	// Intentionally empty — base Dota heroes are used as-is.
+	// Required stub so the custom game loader does not skip hero data.
+}

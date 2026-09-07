@@ -1,0 +1,6 @@
+<root>
+	<Panel>
+		<!-- LOD Deathroll draft HUD (ban / hero select / ability draft) -->
+		<CustomUIElement type="Hud" layoutfile="file://{resources}/layout/custom_game/draft/draft.xml" />
+	</Panel>
+</root>

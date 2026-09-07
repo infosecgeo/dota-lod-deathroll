@@ -40,16 +40,25 @@ function HeroSelect:Start(onComplete)
 end
 
 function HeroSelect:RollOffers()
-	local heroKV = LoadKeyValues("scripts/npc/herolist.txt")
+	-- Category pools live in hero_categories.txt; herolist.txt is engine-only.
+	local heroKV = LoadKeyValues("scripts/npc/hero_categories.txt")
+	-- LoadKeyValues may return the root table or nest under "CustomHeroList".
+	if heroKV and heroKV.CustomHeroList then
+		heroKV = heroKV.CustomHeroList
+	end
 	local offers = {}
 	for _, category in ipairs(CATEGORIES) do
 		local pool = heroKV and heroKV[category] or {}
 		local heroes = {}
-		for hero, _ in pairs(pool) do
-			table.insert(heroes, hero)
+		for hero, enabled in pairs(pool) do
+			if enabled == 1 or enabled == "1" then
+				table.insert(heroes, hero)
+			end
 		end
 		if #heroes > 0 then
 			offers[category] = heroes[RandomInt(1, #heroes)]
+		else
+			print(string.format("[HeroSelect] WARNING: empty pool for category %s", category))
 		end
 	end
 	return offers
