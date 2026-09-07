@@ -30,11 +30,13 @@ function AbilityManager:Load()
 	local blacklist = LoadKeyValues("scripts/config/blacklist.kv")
 	local balance = LoadKeyValues("scripts/config/balance.kv")
 	local draft = LoadKeyValues("scripts/npc/draft_abilities.txt")
+	local upgrades = LoadKeyValues("scripts/config/upgrade_abilities.kv")
 
 	self.db = (abilities and (abilities.Abilities or abilities)) or {}
+	self.upgrades = (upgrades and (upgrades.UpgradeAbilities or upgrades)) or {}
 	self.blacklist = {}
-	if blacklist and blacklist.Blacklist then
-		for name, enabled in pairs(blacklist.Blacklist) do
+	if blacklist then
+		for name, enabled in pairs(blacklist.Blacklist or blacklist) do
 			if enabled == 1 or enabled == "1" then
 				self.blacklist[name] = true
 			end
@@ -124,7 +126,7 @@ end
 
 function AbilityManager:Get(abilityName)
 	self:Load()
-	return self.db[abilityName]
+	return self.upgrades[abilityName] or self.db[abilityName]
 end
 
 function AbilityManager:GetPools()
@@ -134,6 +136,7 @@ end
 
 function AbilityManager:IsUltimate(abilityName)
 	self:Load()
+	if self.upgrades[abilityName] then return self.upgrades[abilityName].type == "ultimate" end
 	if self.pools.ultimateSet[abilityName] then return true end
 	local def = self.db[abilityName]
 	return def and (def.type == "ultimate" or def.Type == "ultimate")
@@ -141,6 +144,7 @@ end
 
 function AbilityManager:IsRegular(abilityName)
 	self:Load()
+	if self.upgrades[abilityName] then return self.upgrades[abilityName].type == "basic" end
 	if self.pools.regularSet[abilityName] then return true end
 	local def = self.db[abilityName]
 	if not def then return false end
@@ -148,7 +152,84 @@ function AbilityManager:IsRegular(abilityName)
 	return t ~= "ultimate"
 end
 
+local function Names(value)
+	local out = {}
+	for name in string.gmatch(type(value) == "string" and value or "", "[^,%s]+") do
+		table.insert(out, name)
+	end
+	return out
+end
+
+function AbilityManager:HasRequiredUpgrade(hero, requirement)
+	if not requirement then return true end
+	if not hero or hero:IsNull() then return false end
+	if requirement == "scepter" then
+		return hero.HasScepter ~= nil and hero:HasScepter()
+	elseif requirement == "shard" then
+		return (hero.HasShard ~= nil and hero:HasShard())
+			or (hero.HasModifier ~= nil and hero:HasModifier("modifier_item_aghanims_shard"))
+	end
+	return false
+end
+
+function AbilityManager:ValidateAbilityRequirements(name, kitSet, hero)
+	local def = self.upgrades[name] or self.db[name] or {}
+	if not self:HasRequiredUpgrade(hero, def.upgrade) then return false, "missing_upgrade" end
+	for _, required in ipairs(Names(def.requires)) do
+		if not kitSet[required] then return false, "missing_dependency" end
+	end
+	for _, incompatible in ipairs(Names(def.incompatible)) do
+		if kitSet[incompatible] then return false, "incompatible" end
+	end
+	return true
+end
+
+function AbilityManager:ValidateKit(hero, basics, ultimates)
+	self:Load()
+	if not hero or hero:IsNull() then return false, "missing_hero" end
+	if type(basics) ~= "table" or type(ultimates) ~= "table"
+		or #basics ~= 3 or #ultimates ~= 2 then return false, "slot_count" end
+	local seen = {}
+	for kind, list in pairs({ basic = basics, ultimate = ultimates }) do
+		for _, name in ipairs(list) do
+			if type(name) ~= "string" or self:IsBlacklisted(name) then return false, "invalid_ability" end
+			if seen[name] then return false, "duplicate" end
+			if (kind == "basic" and not self:IsRegular(name))
+				or (kind == "ultimate" and not self:IsUltimate(name)) then return false, "wrong_type" end
+			seen[name] = true
+		end
+	end
+	for name in pairs(seen) do
+		local ok, reason = self:ValidateAbilityRequirements(name, seen, hero)
+		if not ok then return false, reason end
+	end
+	return true
+end
+
+function AbilityManager:GetDeathPool(kind, hero, basics, ultimates)
+	self:Load()
+	local owned, out, seen = {}, {}, {}
+	for _, list in ipairs({ basics or {}, ultimates or {} }) do
+		for _, name in ipairs(list) do owned[name] = true end
+	end
+	local function include(name)
+		local correctType = (kind == "basic" and self:IsRegular(name))
+			or (kind == "ultimate" and self:IsUltimate(name))
+		if not seen[name] and not owned[name] and not self:IsBlacklisted(name) and correctType
+			and self:ValidateAbilityRequirements(name, owned, hero) then
+			seen[name] = true
+			table.insert(out, name)
+		end
+	end
+	-- All players use the global pools, never their selected hero's native spells.
+	for _, name in ipairs(kind == "basic" and self.pools.regular or self.pools.ultimate) do include(name) end
+	for name in pairs(self.upgrades) do include(name) end
+	table.sort(out)
+	return out
+end
+
 function AbilityManager:IsCompatible(candidate, ownedList, heroName)
+	self:Load()
 	if not candidate or candidate == "" then
 		return false, "empty"
 	end
@@ -237,18 +318,100 @@ function AbilityManager:AddAbilityLeveled(hero, abilityName, level)
 end
 
 function AbilityManager:ApplyKit(hero, basics, ultimates)
-	if not hero or hero:IsNull() then return false end
-	basics = basics or {}
-	ultimates = ultimates or {}
-	self:ClearDraftableAbilities(hero)
-	for _, name in ipairs(basics) do
-		self:AddAbilityLeveled(hero, name, 1)
+	local ok, reason = self:ValidateKit(hero, basics, ultimates)
+	if not ok then return false, reason end
+	local desired = {}
+	for _, list in ipairs({ basics, ultimates }) do
+		for _, name in ipairs(list) do desired[name] = 1 end
 	end
-	for _, name in ipairs(ultimates) do
-		self:AddAbilityLeveled(hero, name, 1)
+	local prepared, why = self:PrepareAbilities(hero, desired)
+	if not prepared then return false, why end
+	for _, name in ipairs(self:ListHeroAbilities(hero)) do
+		if not desired[name] then hero:RemoveAbility(name) end
+	end
+	local index = 0
+	for _, list in ipairs({ basics, ultimates }) do
+		for _, name in ipairs(list) do
+			local ability = hero:FindAbilityByName(name)
+			ability:SetLevel(1)
+			ability:SetHidden(false)
+			if ability.SetAbilityIndex then ability:SetAbilityIndex(index) end
+			index = index + 1
+		end
 	end
 	print(string.format("[AbilityManager] Applied kit to %s: %d basic, %d ult",
 		hero:GetUnitName(), #basics, #ultimates))
+	return true
+end
+
+-- Add first, remove last: a missing/unsupported engine ability must not destroy
+-- the old kit. Snapshot all names because AddAbility can create linked abilities.
+function AbilityManager:PrepareAbilities(hero, desired)
+	local before = {}
+	for i = 0, hero:GetAbilityCount() - 1 do
+		local ability = hero:GetAbilityByIndex(i)
+		if ability and not ability:IsNull() then before[ability:GetAbilityName()] = true end
+	end
+	local ok, reason = pcall(function()
+		for name, level in pairs(desired) do
+			if not hero:FindAbilityByName(name) then
+				local ability = self:AddAbilityLeveled(hero, name, level)
+				if not ability or ability:IsNull() then error("add_failed:" .. name) end
+			end
+		end
+	end)
+	if not ok then
+		local added = {}
+		for i = 0, hero:GetAbilityCount() - 1 do
+			local ability = hero:GetAbilityByIndex(i)
+			if ability and not ability:IsNull() and not before[ability:GetAbilityName()] then
+				table.insert(added, ability:GetAbilityName())
+			end
+		end
+		for _, name in ipairs(added) do hero:RemoveAbility(name) end
+		print("[AbilityManager] Kit preparation failed: " .. tostring(reason))
+		return false, "add_failed"
+	end
+	return true
+end
+
+function AbilityManager:ApplyDraftChanges(hero, oldBasics, oldUltimates, basics, ultimates)
+	if not hero or hero:IsNull() or hero:IsAlive() then return false, "hero_not_dead" end
+	local ok, reason = self:ValidateKit(hero, basics, ultimates)
+	if not ok then return false, reason end
+	if type(oldBasics) ~= "table" or type(oldUltimates) ~= "table"
+		or #oldBasics ~= #basics or #oldUltimates ~= #ultimates then return false, "slot_count" end
+	local oldSet = {}
+	for _, list in ipairs({ oldBasics, oldUltimates }) do
+		for _, name in ipairs(list) do
+			if oldSet[name] then return false, "duplicate_old_ability" end
+			oldSet[name] = true
+		end
+	end
+	local desired, removals = {}, {}
+	for _, pair in ipairs({ { oldBasics, basics }, { oldUltimates, ultimates } }) do
+		for i, oldName in ipairs(pair[1]) do
+			local old = hero:FindAbilityByName(oldName)
+			if not old or old:IsNull() then return false, "missing_old_ability" end
+			local newName = pair[2][i]
+			if oldName ~= newName then
+				if oldSet[newName] then return false, "owned_ability" end
+				desired[newName] = math.max(1, old:GetLevel())
+				table.insert(removals, { name = oldName, gained = newName, index = old:GetAbilityIndex() })
+			end
+		end
+	end
+	local prepared, why = self:PrepareAbilities(hero, desired)
+	if not prepared then return false, why end
+	for _, change in ipairs(removals) do
+		hero:RemoveAbility(change.name)
+		local gained = hero:FindAbilityByName(change.gained)
+		local maxLevel = gained:GetMaxLevel()
+		gained:SetLevel(math.min(desired[change.gained], maxLevel > 0 and maxLevel or 4))
+		gained:SetHidden(false)
+		if gained.SetAbilityIndex then gained:SetAbilityIndex(change.index) end
+	end
+	-- Unchanged handles are untouched: levels, charges and running cooldowns survive.
 	return true
 end
 
@@ -258,10 +421,10 @@ function AbilityManager:ReplaceAbility(hero, oldName, newName)
 	local old = hero:FindAbilityByName(oldName)
 	if old then
 		level = math.max(1, old:GetLevel())
-		hero:RemoveAbility(oldName)
 	end
-	local ab = self:AddAbilityLeveled(hero, newName, level)
-	return ab ~= nil
+	if not self:PrepareAbilities(hero, { [newName] = level }) then return false end
+	if oldName ~= newName then hero:RemoveAbility(oldName) end
+	return true
 end
 
 function AbilityManager:ListHeroAbilities(hero)

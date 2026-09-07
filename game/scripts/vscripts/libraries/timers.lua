@@ -13,7 +13,7 @@ local THINK_NAME = "LODDeathrollTimers"
 local TICK = 0.03
 
 function Timers:Start()
-	if self.started then return end
+	if self.started or self.stopped then return end
 	self.started = true
 	local mode = GameRules:GetGameModeEntity()
 	if not mode then
@@ -27,15 +27,26 @@ function Timers:Start()
 end
 
 function Timers:Think()
+	if self.stopped then return nil end
 	local now = GameRules:GetGameTime()
-	for id, t in pairs(self.timers) do
-		if t.endTime <= now then
+	local realNow = Time()
+	local pending = {}
+	for id, timer in pairs(self.timers) do
+		pending[id] = timer
+	end
+	for id, t in pairs(pending) do
+		local clock = t.useGameTime and now or realNow
+		if self.timers[id] == t
+			and (not t.useGameTime or not GameRules:IsGamePaused()) and t.endTime <= clock then
 			local status, nextDelay = pcall(t.callback)
-			if not status then
+			if self.stopped then return nil end
+			if self.timers[id] ~= t then
+				-- A callback may cancel itself or all timers.
+			elseif not status then
 				print("[Timers] Error in timer " .. tostring(id) .. ": " .. tostring(nextDelay))
 				self.timers[id] = nil
 			elseif type(nextDelay) == "number" and nextDelay > 0 then
-				t.endTime = now + nextDelay
+				t.endTime = clock + nextDelay
 			else
 				self.timers[id] = nil
 			end
@@ -44,18 +55,25 @@ function Timers:Think()
 	return TICK
 end
 
--- CreateTimer(callback) where callback returns seconds until next fire, or nil/false to stop.
-function Timers:CreateTimer(callback)
+-- Pass false for presentation timers that must run during the server's draft pause.
+function Timers:CreateTimer(callback, useGameTime)
+	if self.stopped then return nil end
 	self:Start()
 	local id = self.nextId
 	self.nextId = self.nextId + 1
-	local now = GameRules:GetGameTime()
-	if now < 0 then now = 0 end
+	useGameTime = useGameTime ~= false
+	local now = useGameTime and GameRules:GetGameTime() or Time()
 	self.timers[id] = {
 		endTime = now,
 		callback = callback,
+		useGameTime = useGameTime,
 	}
 	return id
+end
+
+function Timers:Stop()
+	self.stopped = true
+	self.timers = {}
 end
 
 function Timers:RemoveTimer(id)

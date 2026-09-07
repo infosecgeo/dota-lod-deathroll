@@ -1,8 +1,8 @@
 <root>
 	<Panel>
-		<!-- V0.1 foundation HUD (state badge only). Draft panels stay hidden until later phases. -->
+		<!-- State badge remains visible throughout match preparation. -->
 		<CustomUIElement type="Hud" layoutfile="file://{resources}/layout/custom_game/hud/foundation.xml" />
-		<!-- Legacy draft layout kept for Phase 3+; not shown while foundation mode is active. -->
+		<!-- Server-driven draft, preparation, and final results panels. -->
 		<CustomUIElement type="Hud" layoutfile="file://{resources}/layout/custom_game/draft/draft.xml" />
 	</Panel>
 </root>

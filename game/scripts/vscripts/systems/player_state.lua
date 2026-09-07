@@ -25,6 +25,9 @@ local function NewPlayerRecord(playerID)
 		draftLocked = false,
 		draftId = 0,
 		respawnPending = false,
+		clientReady = false,
+		strategyReady = false,
+		prepared = false,
 	}
 end
 
@@ -72,9 +75,35 @@ function PlayerState:ResetRespawnRerolls(playerID)
 end
 
 function PlayerState:ForEachConnected(fn)
+	self:ForEachParticipant(function(playerID, record)
+		if self:IsConnected(playerID) then
+			fn(playerID, record)
+		end
+	end)
+end
+
+function PlayerState:IsParticipant(playerID)
+	if type(playerID) ~= "number" or playerID % 1 ~= 0
+		or not PlayerResource:IsValidPlayerID(playerID) then
+		return false
+	end
+	local team = PlayerResource:GetTeam(playerID)
+	return team == DOTA_TEAM_GOODGUYS or team == DOTA_TEAM_BADGUYS
+end
+
+function PlayerState:IsConnected(playerID)
+	return self:IsParticipant(playerID)
+		and PlayerResource:GetConnectionState(playerID) == DOTA_CONNECTION_STATE_CONNECTED
+end
+
+function PlayerState:IsBot(playerID)
+	return self:IsParticipant(playerID)
+		and PlayerResource:IsFakeClient(playerID)
+end
+
+function PlayerState:ForEachParticipant(fn)
 	for playerID = 0, DOTA_MAX_PLAYERS - 1 do
-		if PlayerResource:IsValidPlayerID(playerID)
-			and PlayerResource:GetConnectionState(playerID) ~= DOTA_CONNECTION_STATE_ABANDONED then
+		if self:IsParticipant(playerID) then
 			fn(playerID, self:Ensure(playerID))
 		end
 	end

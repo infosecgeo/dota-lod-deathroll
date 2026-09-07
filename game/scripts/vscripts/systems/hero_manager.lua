@@ -5,6 +5,7 @@ HeroManager = HeroManager or class({})
 
 local CATEGORIES = { "Strength", "Agility", "Intelligence" }
 local OFFERS_PER_CATEGORY = 4
+local HERO_PREFIX = "npc_dota_hero_"
 
 function HeroManager:constructor()
 	self.pool = {}
@@ -40,8 +41,8 @@ function HeroManager:LoadPool()
 
 	local function addHero(name, enabled, category)
 		if not (enabled == 1 or enabled == "1") then return end
-		if not name or name == "" then return end
-		if name:sub(1, 14) ~= "npc_dota_hero_" then return end
+		if type(name) ~= "string" or name == "" then return end
+		if name:sub(1, #HERO_PREFIX) ~= HERO_PREFIX then return end
 		table.insert(pool, name)
 		if category and categories[category] then
 			table.insert(categories[category], name)
@@ -132,8 +133,20 @@ function HeroManager:SampleCategory(category, count, excludeSet)
 			table.insert(filtered, h)
 		end
 	end
-	if #filtered == 0 then
-		filtered = available
+	-- Prefer new heroes, but retain a full offer in small categories.
+	if #filtered < (count or OFFERS_PER_CATEGORY) then
+		local previous = {}
+		for _, h in ipairs(available) do
+			if excludeSet[h] then table.insert(previous, h) end
+		end
+		for i = #previous, 2, -1 do
+			local j = RandomInt(1, i)
+			previous[i], previous[j] = previous[j], previous[i]
+		end
+		for _, h in ipairs(previous) do
+			if #filtered >= (count or OFFERS_PER_CATEGORY) then break end
+			table.insert(filtered, h)
+		end
 	end
 	for i = #filtered, 2, -1 do
 		local j = RandomInt(1, i)
@@ -216,10 +229,10 @@ function HeroManager:EnsureHeroForPlayer(playerID, preferredHero)
 		if preferredHero and hero:GetUnitName() ~= heroName then
 			local gold = hero.GetGold and hero:GetGold() or 0
 			local replaced = PlayerResource:ReplaceHeroWith(playerID, heroName, gold, 0)
-			if replaced then
+			if replaced and not replaced:IsNull() then
 				hero = replaced
 			else
-				heroName = hero:GetUnitName()
+				return nil, heroName
 			end
 		else
 			heroName = hero:GetUnitName()
@@ -228,6 +241,8 @@ function HeroManager:EnsureHeroForPlayer(playerID, preferredHero)
 		local player = PlayerResource:GetPlayer(playerID)
 		if player then
 			hero = CreateHeroForPlayer(heroName, player)
+		else
+			hero = PlayerResource:ReplaceHeroWith(playerID, heroName, 0, 0)
 		end
 	end
 

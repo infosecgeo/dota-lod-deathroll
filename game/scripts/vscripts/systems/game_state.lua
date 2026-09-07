@@ -12,6 +12,9 @@ GameState.SPAWN = 5
 GameState.PLAYING = 6
 GameState.RESPAWN_DRAFT = 7
 GameState.GAME_OVER = 8
+GameState.STRATEGY = 9
+GameState.INTRODUCTION = 10
+GameState.LOBBY = GameState.WAITING
 
 local NAME = {
 	[0] = "WAITING",
@@ -23,13 +26,15 @@ local NAME = {
 	[6] = "PLAYING",
 	[7] = "RESPAWN_DRAFT",
 	[8] = "GAME_OVER",
+	[9] = "STRATEGY",
+	[10] = "INTRODUCTION",
 }
 
 -- Legal transitions for the full LOD design. V0.1 only uses a subset.
 local ALLOWED = {
 	[GameState.WAITING] = {
 		[GameState.BAN] = true,
-		[GameState.SPAWN] = true, -- V0.1 foundation skips draft
+		[GameState.STRATEGY] = true,
 		[GameState.GAME_OVER] = true,
 	},
 	[GameState.BAN] = {
@@ -42,10 +47,17 @@ local ALLOWED = {
 	},
 	[GameState.ABILITY_DRAFT] = {
 		[GameState.ULTIMATE_DRAFT] = true,
-		[GameState.SPAWN] = true, -- V0.1 / V0.1-lite may skip 2nd ult
 		[GameState.GAME_OVER] = true,
 	},
 	[GameState.ULTIMATE_DRAFT] = {
+		[GameState.STRATEGY] = true,
+		[GameState.GAME_OVER] = true,
+	},
+	[GameState.STRATEGY] = {
+		[GameState.INTRODUCTION] = true,
+		[GameState.GAME_OVER] = true,
+	},
+	[GameState.INTRODUCTION] = {
 		[GameState.SPAWN] = true,
 		[GameState.GAME_OVER] = true,
 	},
@@ -101,6 +113,9 @@ function GameState:OnEnter(state, callback)
 end
 
 function GameState:CanTransition(toState)
+	if toState == GameState.GAME_OVER and self.current ~= GameState.GAME_OVER then
+		return true
+	end
 	if self.locked then
 		return false
 	end
@@ -132,12 +147,14 @@ function GameState:Transition(toState, payload)
 		self:Name(toState)
 	))
 
-	CustomGameEventManager:Send_ServerToAllClients("ai_lod_state", {
+	local statePayload = {
 		state = toState,
 		name = self:Name(toState),
 		from = fromState,
 		from_name = self:Name(fromState),
-	})
+	}
+	CustomNetTables:SetTableValue("ai_lod_match", "state", statePayload)
+	CustomGameEventManager:Send_ServerToAllClients("ai_lod_state", statePayload)
 
 	local cbs = self.listeners[toState]
 	if cbs then

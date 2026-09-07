@@ -1,26 +1,35 @@
--- systems/draft_manager.lua
--- Hero draft (3x4 random + 1 reroll/cat), ability draft (4+1), ultimate draft (6 choices).
+-- Hero draft (3x4, one reroll/category), three basics, initial ult, then extra ult.
 
 DraftManager = DraftManager or class({})
 
 local HERO_DRAFT_TIME = 45
 local ABILITY_DRAFT_TIME = 75
 local ULTIMATE_DRAFT_TIME = 40
-local BASIC_SLOTS = 4
+local BASIC_SLOTS = 3
 local ABILITY_OFFER_BASICS = 12
 local ABILITY_OFFER_ULTS = 6
 local SECOND_ULT_CHOICES = 6
 
 local function Join(list)
-	if not list or #list == 0 then return "" end
-	return table.concat(list, ",")
+	return table.concat(list or {}, ",")
+end
+
+local function Contains(list, value)
+	for _, item in ipairs(list or {}) do
+		if item == value then return true end
+	end
+	return false
+end
+
+local function Copy(list)
+	local result = {}
+	for _, item in ipairs(list or {}) do table.insert(result, item) end
+	return result
 end
 
 local function OwnedList(record)
-	local owned = {}
-	if not record or not record.abilities then return owned end
-	for _, a in ipairs(record.abilities.basic or {}) do table.insert(owned, a) end
-	for _, a in ipairs(record.abilities.ultimate or {}) do table.insert(owned, a) end
+	local owned = Copy(record.abilities.basic)
+	for _, a in ipairs(record.abilities.ultimate) do table.insert(owned, a) end
 	return owned
 end
 
@@ -28,11 +37,9 @@ function DraftManager:constructor(heroManager, abilityManager)
 	self.heroManager = heroManager
 	self.abilityManager = abilityManager
 	self.active = false
-	self.phase = nil
-	self.onComplete = nil
 	self.finished = false
 	self.timeLeft = 0
-	self.timer = nil
+	self.participants = {}
 	self.heroOffers = {}
 	self.heroPicks = {}
 	self.abilityOffers = {}
@@ -42,41 +49,95 @@ function DraftManager:constructor(heroManager, abilityManager)
 	self.ultConfirmed = {}
 end
 
-function DraftManager:StartHeroDraft(onComplete)
-	print("[DraftManager] Hero draft - 3x4 randomized pools, 1 reroll/category")
-	self.phase = "hero"
+function DraftManager:Cancel()
+	self.active = false
+	self.finished = true
+	self.onComplete = nil
+	if self.timer then Timers:RemoveTimer(self.timer) self.timer = nil end
+end
+
+function DraftManager:BeginPhase(phase, duration, onComplete)
+	self:Cancel()
+	self.phase = phase
 	self.onComplete = onComplete
 	self.finished = false
-	self.timeLeft = HERO_DRAFT_TIME
+	self.active = true
+	self.timeLeft = duration
+	self.deadline = Time() + duration
+	PlayerState:ForEachParticipant(function(playerID, _)
+		self.participants[playerID] = true
+	end)
+end
+
+function DraftManager:ForEachPlayer(callback)
+	-- Keep phase participants even while disconnected so reconnects cannot skip a kit.
+	for playerID in pairs(self.participants) do
+		local record = PlayerState:Get(playerID)
+		if record then callback(playerID, record) end
+	end
+end
+
+function DraftManager:StartTimer(phase, event, finish)
+	self.timer = Timers:CreateTimer(function()
+		if not self.active or self.finished or self.phase ~= phase then return nil end
+		self.timeLeft = math.max(0, math.ceil(self.deadline - Time()))
+		CustomGameEventManager:Send_ServerToAllClients(event, { time = self.timeLeft })
+		if self.timeLeft <= 0 then
+			finish(self)
+			-- A broken pool must not advance the match with an incomplete kit.
+			if not self.active or self.finished or self.phase ~= phase then return nil end
+		end
+		return 1
+	end, false)
+end
+
+function DraftManager:CompletePhase(event)
+	local cb = self.onComplete
+	self:Cancel()
+	CustomGameEventManager:Send_ServerToAllClients(event, {})
+	if cb then cb() end
+end
+
+function DraftManager:SyncPlayer(playerID)
+	if not self.active or self.finished or not self.participants[playerID] then return end
+	local player = PlayerResource:GetPlayer(playerID)
+	if not player then return end
+	local events = {
+		hero = "ai_lod_hero_draft_start",
+		ability = "ai_lod_ability_draft_start",
+		ultimate = "ai_lod_ult_draft_start",
+	}
+	CustomGameEventManager:Send_ServerToPlayer(player, events[self.phase], { time = self.timeLeft })
+	if self.phase == "hero" then
+		self:SendHeroOffers(playerID)
+		if self.heroPicks[playerID] then
+			CustomGameEventManager:Send_ServerToPlayer(player, "ai_lod_hero_picked", {
+				hero = self.heroPicks[playerID],
+			})
+		end
+	elseif self.phase == "ability" then
+		self:SendAbilityOffers(playerID)
+	elseif self.phase == "ultimate" then
+		self:SendUltOffers(playerID)
+	end
+end
+
+function DraftManager:StartHeroDraft(onComplete)
+	self.participants = {}
+	self:BeginPhase("hero", HERO_DRAFT_TIME, onComplete)
 	self.heroOffers = {}
 	self.heroPicks = {}
-	self.active = true
-
-	PlayerState:ForEachConnected(function(playerID, record)
+	CustomGameEventManager:Send_ServerToAllClients("ai_lod_hero_draft_start", { time = self.timeLeft })
+	self:ForEachPlayer(function(playerID, record)
 		record.draftState = "HERO_DRAFT"
 		record.rerolls.heroCategory1 = 1
 		record.rerolls.heroCategory2 = 1
 		record.rerolls.heroCategory3 = 1
-		local offers = self.heroManager:BuildPlayerOffers()
-		self.heroOffers[playerID] = offers
-		record.heroPools = offers
+		self.heroOffers[playerID] = self.heroManager:BuildPlayerOffers()
+		record.heroPools = self.heroOffers[playerID]
 		self:SendHeroOffers(playerID)
 	end)
-
-	CustomGameEventManager:Send_ServerToAllClients("ai_lod_hero_draft_start", {
-		time = HERO_DRAFT_TIME,
-	})
-
-	self.timer = Timers:CreateTimer(function()
-		if self.finished or self.phase ~= "hero" then return nil end
-		self.timeLeft = self.timeLeft - 1
-		CustomGameEventManager:Send_ServerToAllClients("ai_lod_hero_timer", { time = self.timeLeft })
-		if self.timeLeft <= 0 then
-			self:FinishHeroDraft()
-			return nil
-		end
-		return 1
-	end)
+	self:StartTimer("hero", "ai_lod_hero_timer", self.FinishHeroDraft)
 end
 
 function DraftManager:SendHeroOffers(playerID)
@@ -91,12 +152,14 @@ function DraftManager:SendHeroOffers(playerID)
 		reroll_str = record and record.rerolls.heroCategory1 or 0,
 		reroll_agi = record and record.rerolls.heroCategory2 or 0,
 		reroll_int = record and record.rerolls.heroCategory3 or 0,
+		selected = self.heroPicks[playerID] or "",
+		locked = self.heroPicks[playerID] ~= nil,
 		time = self.timeLeft,
 	})
 end
 
 function DraftManager:CategoryKey(name)
-	if not name then return nil end
+	if type(name) ~= "string" then return nil end
 	local n = string.lower(name)
 	if n == "strength" or n == "str" or n == "poolc" or n == "1" then return "Strength", "heroCategory1" end
 	if n == "agility" or n == "agi" or n == "poola" or n == "2" then return "Agility", "heroCategory2" end
@@ -105,417 +168,408 @@ function DraftManager:CategoryKey(name)
 end
 
 function DraftManager:HandleHeroReroll(playerID, categoryName)
-	if self.finished or self.phase ~= "hero" then return end
-	if self.heroPicks[playerID] then return end
+	if not self.active or self.finished or self.phase ~= "hero" then return end
+	local offers = self.heroOffers[playerID]
+	if not offers or self.heroPicks[playerID] then return end
 	local cat, bucket = self:CategoryKey(categoryName)
 	if not cat then return end
-	local gm = GameRules.AILOD
-	if gm and gm.rerollManager then
-		if not gm.rerollManager:Consume(playerID, bucket) then
-			return
-		end
-	else
-		local p = PlayerState:Get(playerID)
-		if not p or not p.rerolls or (p.rerolls[bucket] or 0) <= 0 then return end
-		p.rerolls[bucket] = p.rerolls[bucket] - 1
-	end
-
-	local offers = self.heroOffers[playerID] or {}
+	local record = PlayerState:Get(playerID)
+	if not record or (record.rerolls[bucket] or 0) <= 0 then return end
 	local exclude = {}
 	for _, h in ipairs(offers[cat] or {}) do exclude[h] = true end
-	offers[cat] = self.heroManager:SampleCategory(cat, 4, exclude)
-	self.heroOffers[playerID] = offers
-	local record = PlayerState:Get(playerID)
-	if record then record.heroPools = offers end
+	local replacement = self.heroManager:SampleCategory(cat, 4, exclude)
+	if #replacement == 0 then return end
+	record.rerolls[bucket] = record.rerolls[bucket] - 1
+	offers[cat] = replacement
+	record.heroPools = offers
 	self:SendHeroOffers(playerID)
-	print(string.format("[DraftManager] Player %d rerolled %s", playerID, cat))
 end
 
-function DraftManager:HandleHeroPick(playerID, heroName)
-	if self.finished or self.phase ~= "hero" then return end
-	if playerID == nil or self.heroPicks[playerID] then return end
-	if not heroName or heroName == "" then return end
-	if self.heroManager:IsBanned(heroName) then return end
+function DraftManager:IsHeroOffered(playerID, heroName)
+	if type(heroName) ~= "string" or not self.heroManager:IsValidHero(heroName)
+		or self.heroManager:IsBanned(heroName) then return false end
+	local offers = self.heroOffers[playerID] or {}
+	for _, cat in ipairs(self.heroManager:GetCategories()) do
+		if Contains(offers[cat], heroName) then return true end
+	end
+	return false
+end
 
-	local offers = self.heroOffers[playerID]
-	local valid = false
-	if offers then
-		for _, cat in ipairs(self.heroManager:GetCategories()) do
-			for _, h in ipairs(offers[cat] or {}) do
-				if h == heroName then valid = true break end
-			end
-			if valid then break end
-		end
-	end
-	if not valid and self.heroManager:IsValidHero(heroName) and not self.heroManager:IsBanned(heroName) then
-		valid = true
-	end
-	if not valid then
-		print(string.format("[DraftManager] Reject hero pick %s from %s", tostring(heroName), tostring(playerID)))
-		return
-	end
-
+function DraftManager:LockHero(playerID, heroName)
 	self.heroPicks[playerID] = heroName
 	PlayerState:SetHero(playerID, heroName)
 	local record = PlayerState:Get(playerID)
 	if record then record.draftState = "HERO_LOCKED" end
-
+	self:SendHeroOffers(playerID)
 	local player = PlayerResource:GetPlayer(playerID)
 	if player then
 		CustomGameEventManager:Send_ServerToPlayer(player, "ai_lod_hero_picked", { hero = heroName })
 	end
 	CustomGameEventManager:Send_ServerToAllClients("ai_lod_hero_pick_public", {
-		playerID = playerID,
-		hero = heroName,
+		playerID = playerID, hero = heroName,
 	})
-	print(string.format("[DraftManager] Player %d picked hero %s", playerID, heroName))
+end
+
+function DraftManager:HandleHeroPick(playerID, heroName)
+	if not self.active or self.finished or self.phase ~= "hero" then return end
+	if playerID == nil or self.heroPicks[playerID] then return end
+	if not self:IsHeroOffered(playerID, heroName) then return end
+	self:LockHero(playerID, heroName)
 	self:CheckHeroDone()
 end
 
 function DraftManager:CheckHeroDone()
 	local pending = false
-	PlayerState:ForEachConnected(function(playerID, _)
+	self:ForEachPlayer(function(playerID, _)
 		if not self.heroPicks[playerID] then pending = true end
 	end)
-	if not pending then
-		self:FinishHeroDraft()
-	end
+	if not pending then self:FinishHeroDraft() end
 end
 
 function DraftManager:FinishHeroDraft()
-	if self.phase ~= "hero" then return end
-	if self.finished then return end
-	self.finished = true
-	if self.timer then Timers:RemoveTimer(self.timer) self.timer = nil end
-
-	PlayerState:ForEachConnected(function(playerID, _)
-		if not self.heroPicks[playerID] then
-			local offers = self.heroOffers[playerID]
-			local fallback = self.heroManager:GetDefaultHero()
-			if offers then
-				for _, cat in ipairs(self.heroManager:GetCategories()) do
-					if offers[cat] and offers[cat][1] then
-						fallback = offers[cat][1]
-						break
-					end
+	if not self.active or self.finished or self.phase ~= "hero" then return end
+	local pending = false
+	self:ForEachPlayer(function(playerID, record)
+		if self.heroPicks[playerID] then return end
+		local function offeredHero()
+			for _, cat in ipairs(self.heroManager:GetCategories()) do
+				for _, hero in ipairs((self.heroOffers[playerID] or {})[cat] or {}) do
+					if self:IsHeroOffered(playerID, hero) then return hero end
 				end
 			end
-			self.heroPicks[playerID] = fallback
-			PlayerState:SetHero(playerID, fallback)
-			print(string.format("[DraftManager] Auto-hero player %d -> %s", playerID, fallback))
 		end
+		local pick = offeredHero()
+		if not pick then
+			self.heroOffers[playerID] = self.heroManager:BuildPlayerOffers()
+			record.heroPools = self.heroOffers[playerID]
+			self:SendHeroOffers(playerID)
+			pick = offeredHero()
+		end
+		if pick then self:LockHero(playerID, pick) else pending = true end
 	end)
+	if not pending then self:CompletePhase("ai_lod_hero_draft_end") end
+end
 
-	CustomGameEventManager:Send_ServerToAllClients("ai_lod_hero_draft_end", {})
-	self.active = false
-	local cb = self.onComplete
-	self.onComplete = nil
-	if cb then cb() end
+function DraftManager:CanPick(record, abilityName, isUlt)
+	if type(abilityName) ~= "string" then return false end
+	if isUlt then
+		if not self.abilityManager:IsUltimate(abilityName) then return false end
+	elseif not self.abilityManager:IsRegular(abilityName) or self.abilityManager:IsUltimate(abilityName) then
+		return false
+	end
+	local owned = OwnedList(record)
+	if Contains(owned, abilityName) then return false end
+	return self.abilityManager:IsCompatible(abilityName, owned, record.hero)
+end
+
+function DraftManager:Candidates(source, record, isUlt)
+	local result, seen = {}, {}
+	for _, ability in ipairs(source or {}) do
+		if not seen[ability] and self:CanPick(record, ability, isUlt) then
+			seen[ability] = true
+			table.insert(result, ability)
+		end
+	end
+	return result
+end
+
+function DraftManager:ExtraSource()
+	local pools = self.abilityManager:GetPools()
+	local source = Copy(pools.extraUltimate)
+	for _, ability in ipairs(pools.ultimate or {}) do
+		if not Contains(source, ability) then table.insert(source, ability) end
+	end
+	return source
+end
+
+function DraftManager:GlobalAbilityOffers(record, preferred)
+	local pools = self.abilityManager:GetPools()
+	local basics = Copy(preferred and preferred.basic)
+	local ultimates = Copy(preferred and preferred.ultimate)
+	for _, ability in ipairs(pools.regular or {}) do table.insert(basics, ability) end
+	for _, ability in ipairs(pools.ultimate or {}) do table.insert(ultimates, ability) end
+	return {
+		basic = self:Candidates(basics, record, false),
+		ultimate = self:Candidates(ultimates, record, true),
+	}
+end
+
+function DraftManager:FindAbilityCompletion(record, offers)
+	local working = {
+		hero = record.hero,
+		abilities = { basic = Copy(record.abilities.basic), ultimate = Copy(record.abilities.ultimate) },
+	}
+	if #working.abilities.basic > BASIC_SLOTS or #working.abilities.ultimate > 1 then return nil end
+	local extraSource = self:ExtraSource()
+	if #self:Candidates(offers.basic, working, false) < BASIC_SLOTS - #working.abilities.basic then return nil end
+	local extra = self:Candidates(extraSource, working, true)
+	if #extra == 0 then return nil end
+	if #working.abilities.ultimate == 0 then
+		local hasPair = false
+		for _, initial in ipairs(self:Candidates(offers.ultimate, working, true)) do
+			for _, second in ipairs(extra) do
+				if initial ~= second then hasPair = true break end
+			end
+			if hasPair then break end
+		end
+		if not hasPair then return nil end
+	end
+	local function search(first)
+		local basics = working.abilities.basic
+		if #basics < BASIC_SLOTS then
+			for i = first, #(offers.basic or {}) do
+				local ability = offers.basic[i]
+				if self:CanPick(working, ability, false) then
+					table.insert(basics, ability)
+					if search(i + 1) then return true end
+					table.remove(basics)
+				end
+			end
+			return false
+		end
+		if #working.abilities.ultimate == 0 then
+			for _, ability in ipairs(offers.ultimate or {}) do
+				if self:CanPick(working, ability, true) then
+					table.insert(working.abilities.ultimate, ability)
+					if #self:Candidates(extraSource, working, true) > 0 then return true end
+					table.remove(working.abilities.ultimate)
+				end
+			end
+			return false
+		end
+		return #self:Candidates(extraSource, working, true) > 0
+	end
+	if search(1) then return working.abilities end
+	return nil
+end
+
+function DraftManager:EnsureAbilityOffers(playerID, record)
+	local offers = self.abilityOffers[playerID] or { basic = {}, ultimate = {} }
+	self.abilityOffers[playerID] = offers
+	local completion = self:FindAbilityCompletion(record, offers)
+	if completion then return completion end
+	local global = self:GlobalAbilityOffers(record, offers)
+	completion = self:FindAbilityCompletion(record, { basic = offers.basic, ultimate = global.ultimate })
+		or self:FindAbilityCompletion(record, { basic = global.basic, ultimate = offers.ultimate })
+		or self:FindAbilityCompletion(record, global)
+	if not completion then return nil end
+	-- Repair only an unfinishable offer; valid current offers always take precedence.
+	for _, kind in ipairs({ "basic", "ultimate" }) do
+		for _, ability in ipairs(completion[kind]) do
+			if not Contains(offers[kind], ability) and not Contains(record.abilities[kind], ability) then
+				table.insert(offers[kind], ability)
+			end
+		end
+	end
+	self:SendAbilityOffers(playerID)
+	return completion
 end
 
 function DraftManager:StartAbilityDraft(onComplete)
-	print("[DraftManager] Ability draft - 4 basic + 1 ultimate")
-	self.phase = "ability"
-	self.onComplete = onComplete
-	self.finished = false
-	self.timeLeft = ABILITY_DRAFT_TIME
+	self:BeginPhase("ability", ABILITY_DRAFT_TIME, onComplete)
 	self.abilityOffers = {}
 	self.abilityDone = {}
-	self.active = true
 	self.abilityManager:Load()
-
-	PlayerState:ForEachConnected(function(playerID, record)
+	CustomGameEventManager:Send_ServerToAllClients("ai_lod_ability_draft_start", { time = self.timeLeft })
+	self:ForEachPlayer(function(playerID, record)
 		record.draftState = "ABILITY_DRAFT"
 		record.abilities.basic = {}
 		record.abilities.ultimate = {}
 		record.draftLocked = false
-		local pools = self.abilityManager:GetPools()
-		local basicOffers = self.abilityManager:Sample(pools.regular, ABILITY_OFFER_BASICS, {})
-		local ultOffers = self.abilityManager:Sample(pools.ultimate, ABILITY_OFFER_ULTS, {})
-		self.abilityOffers[playerID] = { basic = basicOffers, ultimate = ultOffers }
+		local pools = self:GlobalAbilityOffers(record)
+		self.abilityOffers[playerID] = {
+			basic = self.abilityManager:Sample(pools.basic, ABILITY_OFFER_BASICS, {}),
+			ultimate = self.abilityManager:Sample(pools.ultimate, ABILITY_OFFER_ULTS, {}),
+		}
+		self:EnsureAbilityOffers(playerID, record)
 		self:SendAbilityOffers(playerID)
 	end)
-
-	CustomGameEventManager:Send_ServerToAllClients("ai_lod_ability_draft_start", {
-		time = ABILITY_DRAFT_TIME,
-	})
-
-	self.timer = Timers:CreateTimer(function()
-		if self.finished or self.phase ~= "ability" then return nil end
-		self.timeLeft = self.timeLeft - 1
-		CustomGameEventManager:Send_ServerToAllClients("ai_lod_ability_timer", { time = self.timeLeft })
-		if self.timeLeft <= 0 then
-			self:FinishAbilityDraft()
-			return nil
-		end
-		return 1
-	end)
+	self:StartTimer("ability", "ai_lod_ability_timer", self.FinishAbilityDraft)
 end
 
 function DraftManager:SendAbilityOffers(playerID)
 	local player = PlayerResource:GetPlayer(playerID)
 	if not player then return end
-	local o = self.abilityOffers[playerID] or { basic = {}, ultimate = {} }
+	local o = self.abilityOffers[playerID] or {}
 	local record = PlayerState:Get(playerID)
 	CustomGameEventManager:Send_ServerToPlayer(player, "ai_lod_ability_offers", {
 		basic = Join(o.basic),
 		ultimate = Join(o.ultimate),
-		picked_basic = Join(record and record.abilities.basic or {}),
-		picked_ultimate = Join(record and record.abilities.ultimate or {}),
+		picked_basic = Join(record and record.abilities.basic),
+		picked_ultimate = Join(record and record.abilities.ultimate),
+		locked = self.abilityDone[playerID] == true,
+		basic_locked = record ~= nil and #record.abilities.basic >= BASIC_SLOTS,
+		ultimate_locked = record == nil or #record.abilities.basic < BASIC_SLOTS
+			or #record.abilities.ultimate >= 1,
 		time = self.timeLeft,
 	})
 end
 
 function DraftManager:HandleAbilityPick(playerID, abilityName)
-	if self.finished or self.phase ~= "ability" then return end
-	if playerID == nil or not abilityName then return end
-	if self.abilityDone[playerID] then return end
-
+	if not self.active or self.finished or self.phase ~= "ability" then return end
+	if playerID == nil or self.abilityDone[playerID] then return end
 	local record = PlayerState:Get(playerID)
-	if not record then return end
 	local offers = self.abilityOffers[playerID]
-	if not offers then return end
+	if not record or not offers then return end
+	local isUlt = Contains(offers.ultimate, abilityName)
+	if not isUlt and not Contains(offers.basic, abilityName) then return end
+	if isUlt then
+		if #record.abilities.basic ~= BASIC_SLOTS or #record.abilities.ultimate >= 1 then return end
+	elseif #record.abilities.basic >= BASIC_SLOTS then return end
+	if not self:CanPick(record, abilityName, isUlt) then return end
 
-	local isUlt = false
-	local inOffer = false
-	for _, a in ipairs(offers.ultimate or {}) do
-		if a == abilityName then isUlt = true inOffer = true break end
-	end
-	if not inOffer then
-		for _, a in ipairs(offers.basic or {}) do
-			if a == abilityName then inOffer = true break end
-		end
-	end
-	if not inOffer then
-		if self.abilityManager:IsUltimate(abilityName) then
-			isUlt = true inOffer = true
-		elseif self.abilityManager:IsRegular(abilityName) then
-			inOffer = true
-		end
-	end
-	if not inOffer then return end
-
-	local owned = OwnedList(record)
-	local ok, reason = self.abilityManager:IsCompatible(abilityName, owned, record.hero)
-	if not ok then
-		print(string.format("[DraftManager] Ability reject %s: %s", abilityName, tostring(reason)))
+	local target = isUlt and record.abilities.ultimate or record.abilities.basic
+	table.insert(target, abilityName)
+	if not self:FindAbilityCompletion(record, offers)
+		and not self:FindAbilityCompletion(record, self:GlobalAbilityOffers(record, offers)) then
+		table.remove(target)
 		return
 	end
-
-	if isUlt then
-		if #(record.abilities.ultimate or {}) >= 1 then return end
-		table.insert(record.abilities.ultimate, abilityName)
-	else
-		if #(record.abilities.basic or {}) >= BASIC_SLOTS then return end
-		table.insert(record.abilities.basic, abilityName)
+	if #record.abilities.basic == BASIC_SLOTS and #record.abilities.ultimate == 1 then
+		self.abilityDone[playerID] = true
+		record.draftState = "ABILITY_LOCKED"
 	end
-
+	self:EnsureAbilityOffers(playerID, record)
 	local player = PlayerResource:GetPlayer(playerID)
 	if player then
 		CustomGameEventManager:Send_ServerToPlayer(player, "ai_lod_ability_picked", {
 			ability = abilityName,
-			regularCount = #(record.abilities.basic or {}),
-			hasUltimate = #(record.abilities.ultimate or {}) > 0,
+			regularCount = #record.abilities.basic,
+			hasUltimate = #record.abilities.ultimate > 0,
 			isUltimate = isUlt,
 		})
 	end
 	self:SendAbilityOffers(playerID)
-
-	if #(record.abilities.basic or {}) >= BASIC_SLOTS and #(record.abilities.ultimate or {}) >= 1 then
-		self.abilityDone[playerID] = true
-		record.draftState = "ABILITY_LOCKED"
-	end
 	self:CheckAbilityDone()
 end
 
 function DraftManager:CheckAbilityDone()
 	local pending = false
-	PlayerState:ForEachConnected(function(playerID, _)
+	self:ForEachPlayer(function(playerID, _)
 		if not self.abilityDone[playerID] then pending = true end
 	end)
-	if not pending then
-		self:FinishAbilityDraft()
-	end
+	if not pending then self:FinishAbilityDraft() end
 end
 
 function DraftManager:FinishAbilityDraft()
-	if self.phase ~= "ability" then return end
-	if self.finished then return end
-	self.finished = true
-	if self.timer then Timers:RemoveTimer(self.timer) self.timer = nil end
-
-	local pools = self.abilityManager:GetPools()
-	PlayerState:ForEachConnected(function(playerID, record)
-		record.abilities.basic = record.abilities.basic or {}
-		record.abilities.ultimate = record.abilities.ultimate or {}
-		local guard = 0
-		while #record.abilities.basic < BASIC_SLOTS and guard < 200 do
-			guard = guard + 1
-			local owned = OwnedList(record)
-			local exclude = {}
-			for _, a in ipairs(owned) do exclude[a] = true end
-			local pick = self.abilityManager:RandomFrom(pools.regular, exclude)
-			if not pick then break end
-			local ok = self.abilityManager:IsCompatible(pick, owned, record.hero)
-			if ok then table.insert(record.abilities.basic, pick) end
-		end
-		if #record.abilities.ultimate < 1 then
-			local owned = OwnedList(record)
-			local exclude = {}
-			for _, a in ipairs(owned) do exclude[a] = true end
-			local pick = self.abilityManager:RandomFrom(pools.ultimate, exclude)
-			if pick then table.insert(record.abilities.ultimate, pick) end
-		end
+	if not self.active or self.finished or self.phase ~= "ability" then return end
+	local pending = false
+	self:ForEachPlayer(function(playerID, record)
+		local completion = self:EnsureAbilityOffers(playerID, record)
+		if not completion then pending = true return end
+		record.abilities.basic = completion.basic
+		record.abilities.ultimate = completion.ultimate
 		self.abilityDone[playerID] = true
+		record.draftState = "ABILITY_LOCKED"
+		self:SendAbilityOffers(playerID)
 	end)
+	if not pending then self:CompletePhase("ai_lod_ability_draft_end") end
+end
 
-	CustomGameEventManager:Send_ServerToAllClients("ai_lod_ability_draft_end", {})
-	self.active = false
-	local cb = self.onComplete
-	self.onComplete = nil
-	if cb then cb() end
+function DraftManager:EnsureUltOffers(playerID, record)
+	local offers = self.ultOffers[playerID] or {}
+	if #self:Candidates(offers, record, true) > 0 then return end
+	-- This is pool-error recovery, not a player-requested extra-ultimate reroll.
+	self.ultOffers[playerID] = self.abilityManager:Sample(
+		self:Candidates(self:ExtraSource(), record, true), SECOND_ULT_CHOICES, {})
+	self:SendUltOffers(playerID)
 end
 
 function DraftManager:StartUltimateDraft(onComplete)
-	print("[DraftManager] Ultimate draft - 6 choices, confirm to lock")
-	self.phase = "ultimate"
-	self.onComplete = onComplete
-	self.finished = false
-	self.timeLeft = ULTIMATE_DRAFT_TIME
+	self:BeginPhase("ultimate", ULTIMATE_DRAFT_TIME, onComplete)
 	self.ultOffers = {}
 	self.ultPicks = {}
 	self.ultConfirmed = {}
-	self.active = true
-
-	local pools = self.abilityManager:GetPools()
-	local source = pools.extraUltimate
-	if not source or #source == 0 then source = pools.ultimate end
-
-	PlayerState:ForEachConnected(function(playerID, record)
+	CustomGameEventManager:Send_ServerToAllClients("ai_lod_ult_draft_start", { time = self.timeLeft })
+	self:ForEachPlayer(function(playerID, record)
 		record.draftState = "ULTIMATE_DRAFT"
 		record.ultimateConfirmed = false
-		local owned = OwnedList(record)
-		local exclude = {}
-		for _, a in ipairs(owned) do exclude[a] = true end
-		local choices = self.abilityManager:Sample(source, SECOND_ULT_CHOICES, exclude)
-		self.ultOffers[playerID] = choices
+		local pools = self.abilityManager:GetPools()
+		local source = self:Candidates(pools.extraUltimate, record, true)
+		if #source < SECOND_ULT_CHOICES then source = self:Candidates(self:ExtraSource(), record, true) end
+		self.ultOffers[playerID] = self.abilityManager:Sample(source, SECOND_ULT_CHOICES, {})
 		self:SendUltOffers(playerID)
 	end)
-
-	CustomGameEventManager:Send_ServerToAllClients("ai_lod_ult_draft_start", {
-		time = ULTIMATE_DRAFT_TIME,
-	})
-
-	self.timer = Timers:CreateTimer(function()
-		if self.finished or self.phase ~= "ultimate" then return nil end
-		self.timeLeft = self.timeLeft - 1
-		CustomGameEventManager:Send_ServerToAllClients("ai_lod_ult_timer", { time = self.timeLeft })
-		if self.timeLeft <= 0 then
-			self:FinishUltimateDraft()
-			return nil
-		end
-		return 1
-	end)
+	self:StartTimer("ultimate", "ai_lod_ult_timer", self.FinishUltimateDraft)
 end
 
 function DraftManager:SendUltOffers(playerID)
 	local player = PlayerResource:GetPlayer(playerID)
 	if not player then return end
+	local record = PlayerState:Get(playerID)
 	CustomGameEventManager:Send_ServerToPlayer(player, "ai_lod_ult_offers", {
-		choices = Join(self.ultOffers[playerID] or {}),
+		choices = Join(self.ultOffers[playerID]),
 		selected = self.ultPicks[playerID] or "",
 		confirmed = self.ultConfirmed[playerID] == true,
+		locked = self.ultConfirmed[playerID] == true,
+		picked_basic = Join(record and record.abilities.basic),
+		picked_ultimate = Join(record and record.abilities.ultimate),
 		time = self.timeLeft,
 	})
 end
 
 function DraftManager:HandleUltPick(playerID, abilityName)
-	if self.finished or self.phase ~= "ultimate" then return end
-	if self.ultConfirmed[playerID] then return end
-	if not abilityName then return end
-	local offers = self.ultOffers[playerID] or {}
-	local ok = false
-	for _, a in ipairs(offers) do if a == abilityName then ok = true break end end
-	if not ok then return end
+	if not self.active or self.finished or self.phase ~= "ultimate" then return end
+	if playerID == nil or self.ultConfirmed[playerID] then return end
+	if not Contains(self.ultOffers[playerID], abilityName) then return end
 	local record = PlayerState:Get(playerID)
-	local owned = OwnedList(record)
-	local compatible = self.abilityManager:IsCompatible(abilityName, owned, record and record.hero)
-	if not compatible then return end
+	if not record or #record.abilities.basic ~= BASIC_SLOTS or #record.abilities.ultimate ~= 1 then return end
+	if not self:CanPick(record, abilityName, true) then return end
 	self.ultPicks[playerID] = abilityName
 	self:SendUltOffers(playerID)
 end
 
-function DraftManager:HandleUltConfirm(playerID)
-	if self.finished or self.phase ~= "ultimate" then return end
-	if self.ultConfirmed[playerID] then return end
-	local pick = self.ultPicks[playerID]
-	if not pick then return end
-	local record = PlayerState:Get(playerID)
-	if not record then return end
-	record.abilities.ultimate = record.abilities.ultimate or {}
-	local owned = OwnedList(record)
-	local has = false
-	for _, a in ipairs(owned) do if a == pick then has = true break end end
-	if not has then
-		table.insert(record.abilities.ultimate, pick)
-	end
+function DraftManager:LockUltimate(playerID, record, pick)
+	if #record.abilities.basic ~= BASIC_SLOTS or #record.abilities.ultimate ~= 1 then return false end
+	if not Contains(self.ultOffers[playerID], pick) or not self:CanPick(record, pick, true) then return false end
+	table.insert(record.abilities.ultimate, pick)
+	self.ultPicks[playerID] = pick
 	self.ultConfirmed[playerID] = true
 	record.ultimateConfirmed = true
 	record.draftState = "ULTIMATE_LOCKED"
 	self:SendUltOffers(playerID)
-	print(string.format("[DraftManager] Player %d locked 2nd ult %s", playerID, pick))
-	self:CheckUltDone()
+	return true
+end
+
+function DraftManager:HandleUltConfirm(playerID)
+	if not self.active or self.finished or self.phase ~= "ultimate" then return end
+	if playerID == nil or self.ultConfirmed[playerID] then return end
+	local record = PlayerState:Get(playerID)
+	local pick = self.ultPicks[playerID]
+	if not record or not pick then return end
+	if self:LockUltimate(playerID, record, pick) then self:CheckUltDone() end
 end
 
 function DraftManager:CheckUltDone()
 	local pending = false
-	PlayerState:ForEachConnected(function(playerID, _)
+	self:ForEachPlayer(function(playerID, _)
 		if not self.ultConfirmed[playerID] then pending = true end
 	end)
-	if not pending then
-		self:FinishUltimateDraft()
-	end
+	if not pending then self:FinishUltimateDraft() end
 end
 
 function DraftManager:FinishUltimateDraft()
-	if self.phase ~= "ultimate" then return end
-	if self.finished then return end
-	self.finished = true
-	if self.timer then Timers:RemoveTimer(self.timer) self.timer = nil end
-
-	local pools = self.abilityManager:GetPools()
-	local source = pools.extraUltimate
-	if not source or #source == 0 then source = pools.ultimate end
-
-	PlayerState:ForEachConnected(function(playerID, record)
-		if self.ultConfirmed[playerID] then return end
+	if not self.active or self.finished or self.phase ~= "ultimate" then return end
+	local pending = false
+	self:ForEachPlayer(function(playerID, record)
+		if self.ultConfirmed[playerID] then
+			if #record.abilities.basic ~= BASIC_SLOTS or #record.abilities.ultimate ~= 2 then pending = true end
+			return
+		end
+		if #record.abilities.basic ~= BASIC_SLOTS or #record.abilities.ultimate ~= 1 then
+			local completion = self:EnsureAbilityOffers(playerID, record)
+			if not completion then pending = true return end
+			record.abilities.basic = completion.basic
+			record.abilities.ultimate = completion.ultimate
+		end
+		self:EnsureUltOffers(playerID, record)
 		local pick = self.ultPicks[playerID]
-		if not pick then
-			local owned = OwnedList(record)
-			local exclude = {}
-			for _, a in ipairs(owned) do exclude[a] = true end
-			for _, c in ipairs(self.ultOffers[playerID] or {}) do
-				if not exclude[c] then pick = c break end
-			end
-			if not pick then
-				pick = self.abilityManager:RandomFrom(source, exclude)
-			end
+		if not Contains(self.ultOffers[playerID], pick) or not self:CanPick(record, pick, true) then
+			pick = self:Candidates(self.ultOffers[playerID], record, true)[1]
 		end
-		if pick then
-			record.abilities.ultimate = record.abilities.ultimate or {}
-			local has = false
-			for _, a in ipairs(record.abilities.ultimate) do if a == pick then has = true break end end
-			if not has then table.insert(record.abilities.ultimate, pick) end
-		end
-		self.ultConfirmed[playerID] = true
-		record.ultimateConfirmed = true
+		if not pick or not self:LockUltimate(playerID, record, pick) then pending = true end
 	end)
-
-	CustomGameEventManager:Send_ServerToAllClients("ai_lod_ult_draft_end", {})
-	self.active = false
-	local cb = self.onComplete
-	self.onComplete = nil
-	if cb then cb() end
+	if not pending then self:CompletePhase("ai_lod_ult_draft_end") end
 end
 
 function DraftManager:GetHeroPick(playerID)

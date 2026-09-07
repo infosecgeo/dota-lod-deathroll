@@ -1,0 +1,4 @@
+"custom_net_tables"
+{
+	"ai_lod_match" {}
+}

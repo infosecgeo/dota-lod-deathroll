@@ -27,7 +27,7 @@
 		<Panel id="AbilityDraft" class="PhasePanel" hittest="true">
 			<Label text="#ai_lod_ability_draft" class="PhaseTitle"/>
 			<Label id="DraftTimer" class="Timer" text=""/>
-			<Label text="Draft 4 basic skills + 1 ultimate" class="PhaseHint"/>
+			<Label text="Choose 3 basic skills, then 1 initial ultimate" class="PhaseHint"/>
 			<Label text="Regular abilities" class="SectionTitle"/>
 			<Panel id="DraftRegularList" class="AbilityGrid"/>
 			<Label text="Ultimates" class="SectionTitle"/>
@@ -44,25 +44,58 @@
 			<Button id="UltConfirmBtn" class="ConfirmButton">
 				<Label text="Confirm Lock"/>
 			</Button>
+			<Button id="UltCloseBtn" class="ConfirmButton" enabled="false">
+				<Label text="Close after confirmation"/>
+			</Button>
+		</Panel>
+
+		<Panel id="Preparation" class="PhasePanel PreparationPanel" hittest="true">
+			<Label id="PreparationTitle" text="Strategy" class="PhaseTitle"/>
+			<Label id="PreparationTimer" class="Timer" text=""/>
+			<Label id="PreparationHint" text="" class="PhaseHint"/>
+			<Panel id="IntroductionPlayers" class="AbilityGrid"/>
+			<Button id="StrategyReadyBtn" class="ConfirmButton">
+				<Label text="Ready — finished shopping"/>
+			</Button>
 		</Panel>
 
 		<Panel id="DeathDraft" class="PhasePanel" hittest="true">
 			<Label text="#ai_lod_respawn_draft" class="PhaseTitle"/>
 			<Label id="DeathTimer" class="Timer" text=""/>
-			<Label text="Pick a slot to replace, then a new ability (3 rerolls)" class="PhaseHint"/>
-			<Label text="Your slots" class="SectionTitle"/>
-			<Panel id="DeathSlotList" class="AbilityGrid"/>
-			<Label text="Replacement offers" class="SectionTitle"/>
-			<Panel id="DeathOfferList" class="AbilityGrid"/>
+			<Label text="Stage any number of same-type replacements, then confirm your 3 basics + 2 ultimates." class="PhaseHint"/>
+			<Label text="Basic slots" class="SectionTitle"/>
+			<Panel id="DeathBasicSlots" class="AbilityGrid"/>
+			<Label text="Ultimate slots" class="SectionTitle"/>
+			<Panel id="DeathUltimateSlots" class="AbilityGrid"/>
+			<Label id="DeathOfferTitle" text="Select a slot to see replacement offers" class="SectionTitle"/>
+			<Panel id="DeathBasicOffers" class="AbilityGrid"/>
+			<Panel id="DeathUltimateOffers" class="AbilityGrid"/>
+			<Label text="Rerolling clears staged changes. Timeout keeps your original loadout." class="PhaseHint"/>
+			<Label id="DeathDraftError" text="" class="PhaseHint"/>
 			<Label id="DeathRerolls" text="" class="PhaseHint"/>
 			<Panel class="DeathActions" hittest="true">
+				<Button id="DeathKeepSlotBtn" class="ConfirmButton" enabled="false">
+					<Label text="Keep original in selected slot"/>
+				</Button>
 				<Button id="DeathRerollBtn" class="ConfirmButton">
-					<Label text="Reroll offers"/>
+					<Label id="DeathRerollLabel" text="Reroll both pools"/>
 				</Button>
 				<Button id="DeathConfirmBtn" class="ConfirmButton">
-					<Label text="Confirm replace"/>
+					<Label text="Confirm loadout"/>
 				</Button>
 			</Panel>
+		</Panel>
+
+		<Panel id="MatchResults" class="PhasePanel" hittest="true">
+			<Label id="ResultTitle" text="Match complete" class="PhaseTitle"/>
+			<Label text="Gameplay ended — final results" class="PhaseHint"/>
+			<Label id="ResultMVP" text="" class="SectionTitle"/>
+			<Label id="ResultRunnerUp" text="" class="SectionTitle"/>
+			<Label text="MVP score = kills + assists - deaths; ties: hero damage, then player ID." class="PhaseHint"/>
+			<Panel id="ResultRows" class="Scoreboard"/>
+			<Button id="ResultsCloseBtn" class="ConfirmButton">
+				<Label text="Close — use Dota's post-game menu to return"/>
+			</Button>
 		</Panel>
 
 		<Panel id="DeathrollNotice" class="DeathrollNotice">
