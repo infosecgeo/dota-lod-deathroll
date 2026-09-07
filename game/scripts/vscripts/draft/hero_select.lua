@@ -1,3 +1,4 @@
+-- LEGACY (not required by V0.1). Kept for reference until systems/* fully replace this.
 -- hero_select.lua
 -- Phase 2: category-based hero select.
 -- 3 categories × 4 heroes each; players pick one hero from the pool.

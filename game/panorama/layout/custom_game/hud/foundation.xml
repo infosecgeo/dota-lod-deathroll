@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+	<styles>
+		<include src="s2r://panorama/styles/dotastyles.vcss_c" />
+		<include src="file://{resources}/styles/custom_game/foundation.css" />
+	</styles>
+	<scripts>
+		<include src="file://{resources}/scripts/custom_game/foundation.js" />
+	</scripts>
+	<Panel class="FoundationRoot" hittest="false">
+		<Panel id="StateBadge" class="StateBadge" hittest="false">
+			<Label id="StateLabel" text="AI-LOD V0.1" />
+			<Label id="StateHint" text="#ai_lod_foundation_hint" />
+		</Panel>
+	</Panel>
+</root>

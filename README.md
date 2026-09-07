@@ -1,93 +1,176 @@
-# dota-lod-deathroll
-A Dota 2 Arcade custom game: LOD-style ability draft (ban phase, 3×4 category hero pool, 4+1 skill draft, extra ultimate, death-reroll skills) + local MMR backend (Node.js + built-in SQLite) with ranking dashboard.
+# AI-LOD (`dota-lod-deathroll`)
+
+Dota 2 Arcade custom game: modular LOD-style ability draft with death-draft, built on a **server-authoritative state machine**.
+
+**Current milestone: V0.1 — empty playable foundation**
+
+You can launch the addon locally, pick a hero from the enabled pool, move, attack, use abilities, die, and respawn. LOD draft phases are scaffolded but **disabled** until the current phase is solid.
+
+## Modules
+
+```
+AI-LOD
+├── Game Flow      (WAITING → BAN → HERO_DRAFT → ABILITY_DRAFT → ULTIMATE_DRAFT → SPAWN → PLAYING → RESPAWN_DRAFT)
+├── Hero System    (pool, bans, restrictions)
+├── Ability System (basic/ult/shard, blacklist, compatibility)
+├── Draft System   (randomization, categories, rerolls, confirmation)
+├── Player State   (skills, hero, deaths, rerolls)
+└── UI             (ban / hero / ability / ultimate / respawn)
+```
 
 ## Project layout
 
-- **`game/`** — the Dota 2 custom game addon
-  - `addoninfo.txt` — addon metadata
-  - `scripts/npc/` — KeyValues files (hero categories, draft ability pools)
-  - `scripts/vscripts/` — server-side Lua game logic
-  - `panorama/` — draft UI (XML/CSS/JS)
-  - `resource/` — localization
-- **`mmr-server/`** — local MMR backend (Node.js + Express + built-in SQLite) with a ranking dashboard
+```
+game/                          # copied to dota_addons/dota-lod-deathroll/
+├── addoninfo.txt
+├── scripts/
+│   ├── config/                # KV: heroes, abilities, blacklist, balance
+│   ├── npc/                   # engine herolist + legacy draft pools
+│   └── vscripts/
+│       ├── addon_game_mode.lua
+│       ├── gamemode.lua       # wires systems + feature flags
+│       ├── systems/           # state machine + managers
+│       ├── libraries/
+│       ├── draft/             # legacy draft scripts (not loaded in V0.1)
+│       └── mmr/
+├── panorama/                  # foundation HUD + draft layouts
+└── resource/
+mmr-server/                    # optional local MMR API + dashboard
+tools/                         # future Python balance / sim tools
+```
 
-## Game flow (LOD, not normal picking)
+### Systems (`scripts/vscripts/systems/`)
 
-Vanilla hero selection is **disabled**. The match uses a custom LOD draft UI instead:
+| File | Role |
+|------|------|
+| `game_state.lua` | Central state machine (server authority) |
+| `player_state.lua` | Per-player source of truth |
+| `hero_manager.lua` | Hero pool / ban / spawn helpers |
+| `ability_manager.lua` | Ability DB + blacklist hooks |
+| `ban_manager.lua` | 50s hero ban (Phase 3) |
+| `draft_manager.lua` | Hero / ability / ult draft orchestration |
+| `reroll_manager.lua` | Category + death reroll budgets |
+| `respawn_manager.lua` | Death → (future) respawn draft |
+| `balance_manager.lua` | Power budget (reads `balance.kv`) |
 
-1. **Ban phase** — every player bans one ability from the pool.
-2. **Hero select** — fixed pool of **3 categories × 4 heroes** (12 total). Pick one hero.
-3. **Ability draft (4+1)** — draft **4 regular abilities + 1 ultimate** from skills belonging to that hero pool.
-4. **Battle** — your hero is spawned with drafted skills; everyone also gets a random extra ultimate. On death, one skill is randomly rerolled (30 s cooldown).
+Feature flag in `gamemode.lua`:
 
-### Hero pool
+```lua
+local ENABLE_LOD_DRAFT = false  -- V0.1 foundation; set true when Phase 3+ is ready
+```
 
-| Strength | Agility | Intelligence |
-|----------|---------|--------------|
+## Development stack
+
+| Layer | Tech |
+|-------|------|
+| Game | Dota 2 Workshop Tools |
+| Gameplay | Lua / VScript |
+| UI | Panorama |
+| Config | KeyValues |
+| Balance tools | Python (offline; never mid-match) |
+| VCS | Git |
+| Optional MMR | Node.js ≥ 22.5 (`node:sqlite`) |
+
+## Roadmap (do not skip ahead)
+
+| Phase | Goal | Status |
+|-------|------|--------|
+| **V0.1 / Phase 1–2** | Playable custom game + state machine | **in progress** |
+| Phase 3 | 50s hero ban (server-validated) | scaffolded |
+| Phase 4 | 3×4 hero pools + 1 reroll/category | scaffolded |
+| Phase 5 | `abilities.kv` database | scaffolded |
+| Phase 6–8 | 4 basic + 1 ult + spawn with kit | planned |
+| Phase 9 | 2nd ultimate (6 choices, confirm lock) | planned |
+| Phase 10–12 | Death draft, 3 rerolls, slot replace | planned |
+| Phase 13–14 | Python balance engine / AI analyzer | planned |
+| V1.0 | Full pool, polished Arcade build | planned |
+
+**Rule:** do not start the next major system until the current one works in Workshop Tools.
+
+## Installation
+
+### Prerequisites
+1. Dota 2 (Steam)
+2. **Dota 2 Workshop Tools** DLC
+3. Node.js **22.5+** only if you want the MMR server
+
+### One-click install
+
+**Windows:** run `install.bat` (or pass your `dota 2 beta` path).
+
+**Linux/macOS:**
+```bash
+chmod +x install.sh
+./install.sh "/path/to/dota 2 beta"
+```
+
+Installer copies `game/` → `dota 2 beta/game/dota_addons/dota-lod-deathroll/`.
+
+### Manual install
+Copy `game/` to `dota_addons/dota-lod-deathroll/` so `addoninfo.txt` sits at that path.
+
+## Play (V0.1)
+
+1. Optional: `./start-mmr-server.sh` or `start-mmr-server.bat` → http://localhost:3000  
+2. Steam → Dota 2 → **Launch Dota 2 - Tools** (or `-tools`)  
+3. Select **`dota-lod-deathroll`** → **Play**  
+   Console alternative:
+   ```
+   dota_launch_custom_game dota-lod-deathroll dota
+   ```
+4. Create / start the lobby  
+5. **Pick a hero** from the enabled list (12 MVP heroes)  
+6. Confirm you can **move, attack, cast, die, and respawn**
+
+You should **not** see the LOD ban/draft overlay in V0.1. A small “AI-LOD · …” badge may appear briefly, then hide when `PLAYING`.
+
+### Console check
+In the tools console / server log look for:
+```
+[AI-LOD] InitGameMode (V0.1 foundation, ENABLE_LOD_DRAFT=false)
+[GameState] WAITING -> SPAWN
+[GameState] SPAWN -> PLAYING
+```
+
+## Enabling draft later
+
+When Phase 3 is ready:
+
+1. Implement real logic in `ban_manager` / `draft_manager`  
+2. Set `ENABLE_LOD_DRAFT = true` in `gamemode.lua`  
+3. Re-install addon and test **only** ban → hero draft before touching abilities  
+
+## Architecture rules
+
+- **Server owns state.** Clients send intent (“ban Axe”); server validates.  
+- **No client-side RNG** for pools, bans, or rerolls.  
+- **No live AI in-match.** Python writes `scripts/config/*.kv`; Lua only reads.  
+- **One state machine** — no ad-hoc timers jumping phases without `GameState:Transition`.  
+- **Transaction-style picks** — validate → commit → lock.
+
+## MMR server (optional)
+
+```bash
+cd mmr-server && npm install && npm start
+```
+
+See `mmr-server/` and `scripts/vscripts/mmr/client.lua` (`MMR_SERVER_URL`).
+
+## Hero pool (MVP)
+
+Enabled in `scripts/npc/herolist.txt` and categorized in `scripts/config/heroes.kv` / `scripts/npc/hero_categories.txt`:
+
+| Pool C (Tank) | Pool A (Carry) | Pool B (Utility) |
+|---------------|----------------|------------------|
 | Axe | Juggernaut | Lina |
 | Pudge | Phantom Assassin | Lion |
 | Sven | Sniper | Crystal Maiden |
 | Legion Commander | Anti-Mage | Zeus |
 
-Edit `game/scripts/npc/hero_categories.txt` (Lua pools) and `game/scripts/npc/herolist.txt` (engine enable list) together. Ability pools for those heroes live in `game/scripts/npc/draft_abilities.txt` (real Dota ability names).
+## Next step for you
 
-## Installation — step by step (plug and play)
+1. Re-run `install.bat` / `install.sh`  
+2. Launch Tools → play `dota-lod-deathroll`  
+3. Report: hero pick works? move/attack/cast/die/respawn OK? any console errors?  
 
-### Prerequisites
-1. **Dota 2** installed via Steam.
-2. **Dota 2 Workshop Tools** — in Steam: `Library → Dota 2 → DLC → check "Dota 2 Workshop Tools"` → install.
-3. **Node.js LTS (22.5 or newer)** from <https://nodejs.org> (only needed for the MMR server/leaderboard). The MMR server uses Node’s built-in SQLite (`node:sqlite`) — **no C++/Visual Studio build tools**. Prefer the current **LTS** installer from nodejs.org.
-
-### Option A — one-click install (recommended)
-
-**Windows:** double-click **`install.bat`** (or run it in a terminal). If it can't find Dota, it will ask you to paste the path to your `dota 2 beta` folder, e.g.
-```
-install.bat "C:\Program Files (x86)\Steam\steamapps\common\dota 2 beta"
-```
-
-**Linux/macOS:**
-```bash
-chmod +x install.sh
-./install.sh "/path/to/dota 2 beta"   # defaults to ~/.steam/steam/steamapps/common/dota 2 beta
-```
-
-The installer copies the addon into `dota 2 beta/game/dota_addons/dota-lod-deathroll/` and installs the MMR server dependencies.
-
-### Option B — manual install
-1. Copy the **`game/`** folder into `dota 2 beta/game/dota_addons/` and rename it to **`dota-lod-deathroll`** (so you end up with `dota 2 beta/game/dota_addons/dota-lod-deathroll/addoninfo.txt`).
-2. Set up the MMR server:
-   ```bash
-   cd mmr-server
-   npm install
-   ```
-
-### Play
-1. **Start the MMR server** (optional but needed for MMR tracking):
-   - Windows: double-click **`start-mmr-server.bat`**
-   - Linux/macOS: **`./start-mmr-server.sh`**
-   - Dashboard opens at <http://localhost:3000>
-2. **Launch Dota 2 with Workshop Tools**: right-click Dota 2 in Steam → `Play… → Launch Dota 2 - Tools` (or add `-tools` to launch options).
-3. In the Workshop Tools launcher, select **`dota-lod-deathroll`** and press **Play** (or run `dota_launch_custom_game dota-lod-deathroll dota` from the tools console).
-4. You should **not** see normal hero picking. Instead: Ban → pick a hero from the 3×4 pool → draft 4 abilities + 1 ultimate → fight!
-
-> **Still seeing normal picking / empty UI?** Re-run `install.bat` / `install.sh` so files are copied into `dota_addons/dota-lod-deathroll`, then fully restart Workshop Tools. Confirm `herolist.txt` root key is `"herolist"` with `"1"` entries, and that `draft_abilities.txt` is present next to it.
-
-## MMR server
-
-```bash
-cd mmr-server
-npm install
-npm start
-```
-
-The API listens on `http://localhost:3000`:
-
-| Endpoint | Description |
-|----------|-------------|
-| `POST /players` | Register/update a player (`{ steam_id, name }`) |
-| `POST /matches` | Report a match; updates MMR (ELO, K=32) |
-| `GET /leaderboard` | Top players by MMR |
-| `GET /players/:steam_id` | Player profile + match history |
-| `GET /` | Ranking dashboard |
-
-The game reports match results via `scripts/vscripts/mmr/client.lua` (configure `MMR_SERVER_URL` there).
+Once V0.1 is confirmed, we implement **Phase 3 — 50-second hero ban** only.

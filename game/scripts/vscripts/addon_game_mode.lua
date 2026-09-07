@@ -1,14 +1,15 @@
 -- addon_game_mode.lua
--- Entry point for the LOD Deathroll custom game mode.
+-- Entry point for AI-LOD (addon folder: dota-lod-deathroll).
+
 require("gamemode")
 
 function Precache(context)
-	-- Precache resources used by the draft UI and custom abilities here.
-	print("[LOD Deathroll] Precaching resources")
+	print("[AI-LOD] Precache")
 end
 
 function Activate()
-	print("[LOD Deathroll] Activating game mode")
-	GameRules.LODDeathroll = LODDeathrollGameMode()
-	GameRules.LODDeathroll:InitGameMode()
+	print("[AI-LOD] Activate")
+	GameRules.AILOD = AILODGameMode()
+	GameRules.LODDeathroll = GameRules.AILOD
+	GameRules.AILOD:InitGameMode()
 end
