@@ -1,3 +1,4 @@
+-- LEGACY (not required by V0.1). Kept for reference until systems/* fully replace this.
 -- ban_phase.lua
 -- Phase 1: each player bans one ability before the draft begins.
 

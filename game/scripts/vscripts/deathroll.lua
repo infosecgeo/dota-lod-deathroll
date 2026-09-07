@@ -1,3 +1,4 @@
+-- LEGACY (not required by V0.1). Kept for reference until systems/* fully replace this.
 -- deathroll.lua
 -- Death-reroll: when a hero dies, one of its drafted regular abilities
 -- is replaced with a random ability from the DeathReroll pool.

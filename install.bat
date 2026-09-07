@@ -1,7 +1,7 @@
 @echo off
 setlocal
 REM ============================================================
-REM LOD Deathroll - plug-and-play installer (Windows)
+REM AI-LOD (dota-lod-deathroll) - plug-and-play installer (Windows)
 REM Copies the addon into your Dota 2 Workshop Tools addons
 REM folder and installs + starts the local MMR server.
 REM

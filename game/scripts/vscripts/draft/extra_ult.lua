@@ -1,3 +1,4 @@
+-- LEGACY (not required by V0.1). Kept for reference until systems/* fully replace this.
 -- extra_ult.lua
 -- Assigns each player an extra ultimate from the ExtraUltimate pool
 -- once the draft completes.

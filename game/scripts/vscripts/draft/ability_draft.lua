@@ -1,3 +1,4 @@
+-- LEGACY (not required by V0.1). Kept for reference until systems/* fully replace this.
 -- ability_draft.lua
 -- Phase 3: 4+1 ability draft from the LOD hero pool skills.
 

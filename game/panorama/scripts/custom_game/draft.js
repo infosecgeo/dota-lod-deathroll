@@ -13,6 +13,15 @@ function ShowPanel(panel) {
 	});
 }
 
+
+function HideAllDraftPanels() {
+	[banPhasePanel, heroSelectPanel, abilityDraftPanel].forEach(function (p) {
+		if (p) p.SetHasClass("Visible", false);
+	});
+}
+HideAllDraftPanels();
+
+
 function PrettyName(id) {
 	if (!id) return "";
 	return id

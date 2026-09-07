@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# LOD Deathroll - plug-and-play installer (Linux/macOS)
+# AI-LOD (dota-lod-deathroll) - plug-and-play installer (Linux/macOS)
 # Copies the addon into your Dota 2 Workshop Tools addons
 # folder and installs the local MMR server dependencies.
 #

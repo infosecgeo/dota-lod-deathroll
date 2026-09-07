@@ -1,235 +1,289 @@
 -- gamemode.lua
--- Core game mode logic for LOD Deathroll.
+-- AI-LOD core. V0.1 = empty playable custom game + state machine.
+-- LOD draft phases are wired but disabled until later milestones.
 
 require("libraries/timers")
-require("draft/ban_phase")
-require("draft/hero_select")
-require("draft/ability_draft")
-require("draft/extra_ult")
-require("deathroll")
+require("systems/game_state")
+require("systems/player_state")
+require("systems/hero_manager")
+require("systems/ability_manager")
+require("systems/ban_manager")
+require("systems/draft_manager")
+require("systems/reroll_manager")
+require("systems/respawn_manager")
+require("systems/balance_manager")
 require("mmr/client")
 
-LODDeathrollGameMode = LODDeathrollGameMode or class({})
+AILODGameMode = AILODGameMode or class({})
 
--- Game states
-local STATE_BAN_PHASE = 1
-local STATE_HERO_SELECT = 2
-local STATE_ABILITY_DRAFT = 3
-local STATE_BATTLE = 4
+-- ---------------------------------------------------------------------------
+-- Feature flags
+-- ---------------------------------------------------------------------------
+-- V0.1 milestone: launch → lobby → start → spawn → move/attack/abilities →
+-- die → respawn. No LOD draft yet.
+local ENABLE_LOD_DRAFT = false
 
--- Placeholder hero while LOD draft UI runs (skips vanilla pick screen).
-local FORCE_HERO = "npc_dota_hero_axe"
+-- Fallback hero if selection fails (also used if force-hero path is needed).
+local DEFAULT_HERO = "npc_dota_hero_axe"
 
-function LODDeathrollGameMode:InitGameMode()
-	print("[LOD Deathroll] Initializing game mode")
+function AILODGameMode:InitGameMode()
+	print("[AI-LOD] InitGameMode (V0.1 foundation, ENABLE_LOD_DRAFT="
+		.. tostring(ENABLE_LOD_DRAFT) .. ")")
 
-	self.state = STATE_BAN_PHASE
-	self.draftStarted = false
-	self.banPhase = BanPhase()
-	self.heroSelect = HeroSelect()
-	self.abilityDraft = AbilityDraft()
-	self.extraUlt = ExtraUlt()
-	self.deathroll = Deathroll()
+	self.enableLodDraft = ENABLE_LOD_DRAFT
+	self.flowStarted = false
+
+	PlayerState:Init()
+	GameState:Init(self)
+
+	self.heroManager = HeroManager()
+	self.abilityManager = AbilityManager()
+	self.abilityManager:Load()
+	self.banManager = BanManager(self.heroManager)
+	self.draftManager = DraftManager(self.heroManager, self.abilityManager)
+	self.rerollManager = RerollManager()
+	self.respawnManager = RespawnManager()
+	self.balanceManager = BalanceManager(self.abilityManager)
+	self.balanceManager:Load()
 	self.mmrClient = MMRClient()
 
+	self.heroManager:LoadPool()
 	self:SetupGameRules()
+	self:RegisterStateHandlers()
+	self:RegisterEvents()
 
-	ListenToGameEvent("game_rules_state_change", Dynamic_Wrap(LODDeathrollGameMode, "OnGameRulesStateChange"), self)
-	ListenToGameEvent("npc_spawned", Dynamic_Wrap(LODDeathrollGameMode, "OnNPCSpawned"), self)
-	ListenToGameEvent("entity_killed", Dynamic_Wrap(LODDeathrollGameMode, "OnEntityKilled"), self)
-
-	-- Custom events: callback is (eventSourceIndex, eventData). Bind to instance methods.
-	local gm = self
-	CustomGameEventManager:RegisterListener("lod_ban_ability", function(_, event)
-		gm:OnBanAbility(event)
-	end)
-	CustomGameEventManager:RegisterListener("lod_pick_hero", function(_, event)
-		gm:OnPickHero(event)
-	end)
-	CustomGameEventManager:RegisterListener("lod_pick_ability", function(_, event)
-		gm:OnPickAbility(event)
-	end)
+	Timers:Start()
 end
 
-function LODDeathrollGameMode:SetupGameRules()
+function AILODGameMode:SetupGameRules()
 	GameRules:SetCustomGameTeamMaxPlayers(DOTA_TEAM_GOODGUYS, 5)
 	GameRules:SetCustomGameTeamMaxPlayers(DOTA_TEAM_BADGUYS, 5)
 
-	-- Skip vanilla hero pick — LOD category pick + ability draft is the real select.
-	GameRules:SetCustomGameSetupAutoLaunchDelay(3)
-	GameRules:SetHeroSelectionTime(0)
-	GameRules:SetHeroSelectPenaltyTime(0)
+	GameRules:SetCustomGameSetupAutoLaunchDelay(5)
 	GameRules:SetStrategyTime(0)
 	GameRules:SetShowcaseTime(0)
-	-- Draft runs during pre-game (ban 30 + hero 45 + ability 60 ≈ 135s; buffer included).
-	GameRules:SetPreGameTime(150)
 	GameRules:SetPostGameTime(30)
 	GameRules:SetTreeRegrowTime(60)
-	GameRules:SetGoldPerTick(0)
-	GameRules:SetGoldTickTime(0)
 	GameRules:SetUseUniversalShopMode(true)
 	GameRules:SetSameHeroSelectionEnabled(true)
 
+	if self.enableLodDraft then
+		-- Future LOD path: skip vanilla pick, draft owns hero choice.
+		GameRules:SetHeroSelectionTime(0)
+		GameRules:SetHeroSelectPenaltyTime(0)
+		GameRules:SetPreGameTime(180)
+	else
+		-- V0.1: normal hero pick from herolist, then play.
+		GameRules:SetHeroSelectionTime(30)
+		GameRules:SetHeroSelectPenaltyTime(5)
+		GameRules:SetPreGameTime(10)
+	end
+
 	local mode = GameRules:GetGameModeEntity()
 	if mode then
-		-- Force a placeholder so the engine does not show normal hero picking.
-		if mode.SetCustomGameForceHero then
-			mode:SetCustomGameForceHero(FORCE_HERO)
+		if self.enableLodDraft and mode.SetCustomGameForceHero then
+			mode:SetCustomGameForceHero(DEFAULT_HERO)
 		end
 		mode:SetRecommendedItemsDisabled(false)
 		mode:SetBuybackEnabled(true)
 		mode:SetCustomHeroMaxLevel(30)
 		mode:SetFogOfWarDisabled(false)
 		mode:SetUnseenFogOfWarEnabled(true)
+		if mode.SetFixedRespawnTime then
+			mode:SetFixedRespawnTime(-1)
+		end
 	end
 end
 
-function LODDeathrollGameMode:OnGameRulesStateChange()
-	local state = GameRules:State_Get()
-	-- Start LOD draft as soon as heroes exist (PRE_GAME), not after match clock.
-	if state == DOTA_GAMERULES_STATE_PRE_GAME or state == DOTA_GAMERULES_STATE_GAME_IN_PROGRESS then
-		self:StartDraft()
-	end
-end
-
-function LODDeathrollGameMode:OnNPCSpawned(event)
-	local unit = EntIndexToHScript(event.entindex)
-	if not unit or not unit:IsRealHero() then return end
-	if unit.bLODProcessed then return end
-
-	-- During draft, strip placeholder abilities so players cannot fight yet.
-	if self.state ~= STATE_BATTLE then
-		self:StripHeroAbilities(unit)
-		unit:AddNewModifier(unit, nil, "modifier_stunned", {})
-	end
-end
-
-function LODDeathrollGameMode:OnEntityKilled(event)
-	local killed = EntIndexToHScript(event.entindex_killed)
-	if not killed or not killed:IsRealHero() then return end
-	if self.state == STATE_BATTLE then
-		self.deathroll:OnHeroDeath(killed)
-	end
-end
-
-function LODDeathrollGameMode:StartDraft()
-	if self.draftStarted then return end
-	self.draftStarted = true
-	print("[LOD Deathroll] Starting LOD draft phase (ban -> hero -> abilities)")
-	self.state = STATE_BAN_PHASE
-	Timers:Start()
-
-	self.banPhase:Start(function()
-		self.state = STATE_HERO_SELECT
-		self.heroSelect:Start(function()
-			self.state = STATE_ABILITY_DRAFT
-			self.abilityDraft:Start(function()
-				self:StartBattle()
-			end)
+function AILODGameMode:RegisterStateHandlers()
+	GameState:OnEnter(GameState.BAN, function()
+		self.banManager:Start(function()
+			GameState:Transition(GameState.HERO_DRAFT)
 		end)
+	end)
+
+	GameState:OnEnter(GameState.HERO_DRAFT, function()
+		self.draftManager:StartHeroDraft(function()
+			GameState:Transition(GameState.ABILITY_DRAFT)
+		end)
+	end)
+
+	GameState:OnEnter(GameState.ABILITY_DRAFT, function()
+		self.draftManager:StartAbilityDraft(function()
+			GameState:Transition(GameState.SPAWN)
+		end)
+	end)
+
+	GameState:OnEnter(GameState.ULTIMATE_DRAFT, function()
+		self.draftManager:StartUltimateDraft(function()
+			GameState:Transition(GameState.SPAWN)
+		end)
+	end)
+
+	GameState:OnEnter(GameState.SPAWN, function()
+		self:RunSpawnPhase()
+	end)
+
+	GameState:OnEnter(GameState.PLAYING, function()
+		print("[AI-LOD] PLAYING — heroes should move, attack, cast, die, respawn")
+		CustomGameEventManager:Send_ServerToAllClients("ai_lod_playing", {})
+	end)
+
+	GameState:OnEnter(GameState.RESPAWN_DRAFT, function(payload)
+		print("[AI-LOD] RESPAWN_DRAFT reserved; returning to PLAYING")
+		GameState:Transition(GameState.PLAYING)
+	end)
+
+	GameState:OnEnter(GameState.GAME_OVER, function()
+		print("[AI-LOD] GAME_OVER")
 	end)
 end
 
-function LODDeathrollGameMode:StripHeroAbilities(hero)
-	if not hero or hero:IsNull() then return end
-	local toRemove = {}
-	for i = 0, hero:GetAbilityCount() - 1 do
-		local ab = hero:GetAbilityByIndex(i)
-		if ab then
-			local name = ab:GetAbilityName()
-			if name and name ~= "" and not string.find(name, "special_bonus") then
-				table.insert(toRemove, name)
-			end
-		end
-	end
-	for _, name in ipairs(toRemove) do
-		hero:RemoveAbility(name)
-	end
+function AILODGameMode:RegisterEvents()
+	ListenToGameEvent("game_rules_state_change", Dynamic_Wrap(AILODGameMode, "OnGameRulesStateChange"), self)
+	ListenToGameEvent("npc_spawned", Dynamic_Wrap(AILODGameMode, "OnNPCSpawned"), self)
+	ListenToGameEvent("entity_killed", Dynamic_Wrap(AILODGameMode, "OnEntityKilled"), self)
+	ListenToGameEvent("dota_player_pick_hero", Dynamic_Wrap(AILODGameMode, "OnPlayerPickHero"), self)
+
+	local gm = self
+	CustomGameEventManager:RegisterListener("ai_lod_ban_hero", function(_, event)
+		gm:OnBanHero(event)
+	end)
+	-- Old UI events are ignored so stale clients cannot desync V0.1.
+	CustomGameEventManager:RegisterListener("lod_ban_ability", function() end)
+	CustomGameEventManager:RegisterListener("lod_pick_hero", function() end)
+	CustomGameEventManager:RegisterListener("lod_pick_ability", function() end)
 end
 
-function LODDeathrollGameMode:ApplyDraftedAbilities(hero, picks)
-	if not hero or hero:IsNull() or not picks then return end
-	self:StripHeroAbilities(hero)
+function AILODGameMode:OnGameRulesStateChange()
+	local state = GameRules:State_Get()
 
-	local order = {}
-	for _, ability in ipairs(picks.regular or {}) do
-		table.insert(order, ability)
-	end
-	if picks.ultimate then
-		table.insert(order, picks.ultimate)
+	if state == DOTA_GAMERULES_STATE_HERO_SELECTION then
+		print("[AI-LOD] Engine state: HERO_SELECTION")
+		GameState.current = GameState.WAITING
+		CustomGameEventManager:Send_ServerToAllClients("ai_lod_state", {
+			state = GameState.WAITING,
+			name = "WAITING",
+		})
 	end
 
-	for _, abilityName in ipairs(order) do
-		local ab = hero:AddAbility(abilityName)
-		if ab then
-			ab:SetLevel(1)
-			ab:SetHidden(false)
+	if state == DOTA_GAMERULES_STATE_PRE_GAME then
+		print("[AI-LOD] Engine state: PRE_GAME")
+		self:BeginMatchFlow()
+	end
+
+	if state == DOTA_GAMERULES_STATE_GAME_IN_PROGRESS then
+		print("[AI-LOD] Engine state: GAME_IN_PROGRESS")
+		if GameState:Is(GameState.WAITING) or GameState:Is(GameState.SPAWN) then
+			self:BeginMatchFlow()
+		end
+		if GameState:Is(GameState.SPAWN) then
+			GameState:Transition(GameState.PLAYING)
+		end
+	end
+
+	if state == DOTA_GAMERULES_STATE_POST_GAME then
+		if GameState:CanTransition(GameState.GAME_OVER) then
+			GameState:Transition(GameState.GAME_OVER)
 		else
-			print(string.format("[LOD Deathroll] Failed to add ability %s", tostring(abilityName)))
+			-- Force terminal state if mid-flow
+			GameState.current = GameState.GAME_OVER
 		end
 	end
 end
 
-function LODDeathrollGameMode:StartBattle()
-	print("[LOD Deathroll] Draft complete. Applying heroes and abilities.")
-	self.state = STATE_BATTLE
-
-	for playerID = 0, DOTA_MAX_PLAYERS - 1 do
-		if PlayerResource:IsValidPlayerID(playerID) then
-			local heroName = self.heroSelect:GetPick(playerID) or "npc_dota_hero_axe"
-			local picks = self.abilityDraft:GetPicks(playerID)
-
-			local hero = PlayerResource:GetSelectedHeroEntity(playerID)
-			if hero and hero:GetUnitName() ~= heroName then
-				local gold = 0
-				if hero.GetGold then gold = hero:GetGold() end
-				local newHero = PlayerResource:ReplaceHeroWith(playerID, heroName, gold, 0)
-				if newHero then
-					hero = newHero
-				end
-			elseif not hero then
-				local player = PlayerResource:GetPlayer(playerID)
-				if player then
-					hero = CreateHeroForPlayer(heroName, player)
-				end
-			end
-
-			if hero then
-				hero:RemoveModifierByName("modifier_stunned")
-				self:ApplyDraftedAbilities(hero, picks)
-				hero.bLODProcessed = true
-				print(string.format("[LOD Deathroll] Player %d -> %s with drafted skills", playerID, heroName))
-			end
-		end
+function AILODGameMode:BeginMatchFlow()
+	if self.flowStarted then
+		return
 	end
+	self.flowStarted = true
+	Timers:Start()
 
-	self.extraUlt:AssignExtraUltimates()
-	CustomGameEventManager:Send_ServerToAllClients("lod_battle_start", {})
+	if self.enableLodDraft then
+		print("[AI-LOD] Starting LOD draft flow")
+		GameState:Transition(GameState.BAN)
+	else
+		print("[AI-LOD] V0.1 foundation flow → SPAWN → PLAYING")
+		GameState:Transition(GameState.SPAWN)
+	end
 end
 
-function LODDeathrollGameMode:EventPlayerID(event)
+function AILODGameMode:RunSpawnPhase()
+	print("[AI-LOD] SPAWN phase")
+
+	PlayerState:ForEachConnected(function(playerID, record)
+		local preferred = record.hero
+		local hero, heroName = self.heroManager:EnsureHeroForPlayer(playerID, preferred)
+		if hero then
+			print(string.format("[AI-LOD] Player %d ready with %s", playerID, tostring(heroName)))
+			hero:RemoveModifierByName("modifier_stunned")
+			hero.bAILODReady = true
+		else
+			print(string.format("[AI-LOD] WARNING: no hero for player %d", playerID))
+		end
+	end)
+
+	local engineState = GameRules:State_Get()
+	if engineState == DOTA_GAMERULES_STATE_GAME_IN_PROGRESS then
+		GameState:Transition(GameState.PLAYING)
+	else
+		Timers:CreateTimer(function()
+			if GameState:Is(GameState.SPAWN) then
+				GameState:Transition(GameState.PLAYING)
+			end
+			return nil
+		end)
+	end
+end
+
+function AILODGameMode:OnPlayerPickHero(event)
+	local hero = EntIndexToHScript(event.heroindex)
+	if not hero or hero:IsNull() then return end
+	local playerID = hero:GetPlayerOwnerID()
+	if not PlayerResource:IsValidPlayerID(playerID) then return end
+	PlayerState:SetHero(playerID, hero:GetUnitName())
+	print(string.format("[AI-LOD] Pick recorded player %d -> %s", playerID, hero:GetUnitName()))
+end
+
+function AILODGameMode:OnNPCSpawned(event)
+	local unit = EntIndexToHScript(event.entindex)
+	if not unit or unit:IsNull() or not unit:IsRealHero() then return end
+
+	if not self.enableLodDraft then
+		unit:RemoveModifierByName("modifier_stunned")
+		self.respawnManager:OnHeroSpawn(unit)
+		return
+	end
+
+	if not GameState:Is(GameState.PLAYING) and not GameState:Is(GameState.SPAWN) then
+		if not unit.bAILODReady then
+			unit:AddNewModifier(unit, nil, "modifier_stunned", {})
+		end
+	else
+		unit:RemoveModifierByName("modifier_stunned")
+	end
+end
+
+function AILODGameMode:OnEntityKilled(event)
+	local killed = EntIndexToHScript(event.entindex_killed)
+	if not killed or killed:IsNull() or not killed:IsRealHero() then return end
+	if GameState:Is(GameState.PLAYING) then
+		self.respawnManager:OnHeroDeath(killed)
+	end
+end
+
+function AILODGameMode:EventPlayerID(event)
 	if not event then return nil end
 	if event.PlayerID ~= nil then return event.PlayerID end
 	if event.player_id ~= nil then return event.player_id end
 	return nil
 end
 
-function LODDeathrollGameMode:OnBanAbility(event)
-	if self.state ~= STATE_BAN_PHASE then return end
+function AILODGameMode:OnBanHero(event)
+	if not GameState:Is(GameState.BAN) then return end
 	if type(event) ~= "table" then return end
-	self.banPhase:HandleBan(self:EventPlayerID(event), event.ability)
+	self.banManager:HandleBan(self:EventPlayerID(event), event.hero)
 end
 
-function LODDeathrollGameMode:OnPickHero(event)
-	if self.state ~= STATE_HERO_SELECT then return end
-	if type(event) ~= "table" then return end
-	-- Prefer explicit hero name; fall back to category for older clients.
-	local hero = event.hero or event.category
-	self.heroSelect:HandlePick(self:EventPlayerID(event), hero)
-end
-
-function LODDeathrollGameMode:OnPickAbility(event)
-	if self.state ~= STATE_ABILITY_DRAFT then return end
-	if type(event) ~= "table" then return end
-	self.abilityDraft:HandlePick(self:EventPlayerID(event), event.ability)
-end
+-- Back-compat alias
+LODDeathrollGameMode = AILODGameMode
