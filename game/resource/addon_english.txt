@@ -13,7 +13,7 @@
 		"ai_lod_playing"			"Battle"
 		"ai_lod_respawn_draft"		"Death Draft"
 		"ai_lod_game_over"			"Game Over"
-		"ai_lod_foundation_hint"	"V0.1 foundation — pick a hero and play normally."
+		"ai_lod_foundation_hint"	"V1.0 LOD draft — ban, pick, draft abilities, fight."
 		"lod_ban_phase"				"Ban Phase"
 		"lod_hero_select"			"Hero Select"
 		"lod_ability_draft"			"Ability Draft"

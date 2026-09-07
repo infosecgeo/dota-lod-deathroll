@@ -1,6 +1,5 @@
 -- gamemode.lua
--- AI-LOD core. V0.1 = empty playable custom game + state machine.
--- LOD draft phases are wired but disabled until later milestones.
+-- AI-LOD core. Full LOD draft pipeline (Phases 3-12) enabled for V1.0.
 
 require("libraries/timers")
 require("systems/game_state")
@@ -19,15 +18,13 @@ AILODGameMode = AILODGameMode or class({})
 -- ---------------------------------------------------------------------------
 -- Feature flags
 -- ---------------------------------------------------------------------------
--- V0.1 milestone: launch → lobby → start → spawn → move/attack/abilities →
--- die → respawn. No LOD draft yet.
-local ENABLE_LOD_DRAFT = false
+local ENABLE_LOD_DRAFT = true
 
 -- Fallback hero if selection fails (also used if force-hero path is needed).
 local DEFAULT_HERO = "npc_dota_hero_axe"
 
 function AILODGameMode:InitGameMode()
-	print("[AI-LOD] InitGameMode (V0.1 foundation, ENABLE_LOD_DRAFT="
+	print("[AI-LOD] InitGameMode (V1.0 LOD draft, ENABLE_LOD_DRAFT="
 		.. tostring(ENABLE_LOD_DRAFT) .. ")")
 
 	self.enableLodDraft = ENABLE_LOD_DRAFT
@@ -42,7 +39,8 @@ function AILODGameMode:InitGameMode()
 	self.banManager = BanManager(self.heroManager)
 	self.draftManager = DraftManager(self.heroManager, self.abilityManager)
 	self.rerollManager = RerollManager()
-	self.respawnManager = RespawnManager()
+	self.respawnManager = RespawnManager(self.abilityManager, self.rerollManager)
+	self.respawnManager.enabledDraft = ENABLE_LOD_DRAFT
 	self.balanceManager = BalanceManager(self.abilityManager)
 	self.balanceManager:Load()
 	self.mmrClient = MMRClient()
@@ -68,12 +66,11 @@ function AILODGameMode:SetupGameRules()
 	GameRules:SetSameHeroSelectionEnabled(true)
 
 	if self.enableLodDraft then
-		-- Future LOD path: skip vanilla pick, draft owns hero choice.
+		-- LOD path: skip vanilla pick, draft owns hero choice.
 		GameRules:SetHeroSelectionTime(0)
 		GameRules:SetHeroSelectPenaltyTime(0)
-		GameRules:SetPreGameTime(180)
+		GameRules:SetPreGameTime(240)
 	else
-		-- V0.1: normal hero pick from herolist, then play.
 		GameRules:SetHeroSelectionTime(30)
 		GameRules:SetHeroSelectPenaltyTime(5)
 		GameRules:SetPreGameTime(10)
@@ -110,7 +107,7 @@ function AILODGameMode:RegisterStateHandlers()
 
 	GameState:OnEnter(GameState.ABILITY_DRAFT, function()
 		self.draftManager:StartAbilityDraft(function()
-			GameState:Transition(GameState.SPAWN)
+			GameState:Transition(GameState.ULTIMATE_DRAFT)
 		end)
 	end)
 
@@ -125,12 +122,14 @@ function AILODGameMode:RegisterStateHandlers()
 	end)
 
 	GameState:OnEnter(GameState.PLAYING, function()
-		print("[AI-LOD] PLAYING — heroes should move, attack, cast, die, respawn")
+		print("[AI-LOD] PLAYING — heroes should move, attack, cast, die, death-draft")
 		CustomGameEventManager:Send_ServerToAllClients("ai_lod_playing", {})
+		CustomGameEventManager:Send_ServerToAllClients("lod_battle_start", {})
 	end)
 
 	GameState:OnEnter(GameState.RESPAWN_DRAFT, function(payload)
-		print("[AI-LOD] RESPAWN_DRAFT reserved; returning to PLAYING")
+		-- Global RESPAWN_DRAFT is reserved; death draft is per-player in PLAYING.
+		print("[AI-LOD] RESPAWN_DRAFT global enter; returning to PLAYING")
 		GameState:Transition(GameState.PLAYING)
 	end)
 
@@ -149,10 +148,44 @@ function AILODGameMode:RegisterEvents()
 	CustomGameEventManager:RegisterListener("ai_lod_ban_hero", function(_, event)
 		gm:OnBanHero(event)
 	end)
-	-- Old UI events are ignored so stale clients cannot desync V0.1.
-	CustomGameEventManager:RegisterListener("lod_ban_ability", function() end)
-	CustomGameEventManager:RegisterListener("lod_pick_hero", function() end)
-	CustomGameEventManager:RegisterListener("lod_pick_ability", function() end)
+	CustomGameEventManager:RegisterListener("ai_lod_pick_hero", function(_, event)
+		gm:OnPickHero(event)
+	end)
+	CustomGameEventManager:RegisterListener("ai_lod_reroll_hero", function(_, event)
+		gm:OnRerollHero(event)
+	end)
+	CustomGameEventManager:RegisterListener("ai_lod_pick_ability", function(_, event)
+		gm:OnPickAbility(event)
+	end)
+	CustomGameEventManager:RegisterListener("ai_lod_pick_ult", function(_, event)
+		gm:OnPickUlt(event)
+	end)
+	CustomGameEventManager:RegisterListener("ai_lod_confirm_ult", function(_, event)
+		gm:OnConfirmUlt(event)
+	end)
+	CustomGameEventManager:RegisterListener("ai_lod_death_slot", function(_, event)
+		gm:OnDeathSlot(event)
+	end)
+	CustomGameEventManager:RegisterListener("ai_lod_death_ability", function(_, event)
+		gm:OnDeathAbility(event)
+	end)
+	CustomGameEventManager:RegisterListener("ai_lod_death_reroll", function(_, event)
+		gm:OnDeathReroll(event)
+	end)
+	CustomGameEventManager:RegisterListener("ai_lod_death_confirm", function(_, event)
+		gm:OnDeathConfirm(event)
+	end)
+
+	-- Legacy event names (map onto new handlers)
+	CustomGameEventManager:RegisterListener("lod_ban_ability", function(_, event)
+		-- legacy banned abilities; ignore in hero-ban design
+	end)
+	CustomGameEventManager:RegisterListener("lod_pick_hero", function(_, event)
+		gm:OnPickHero(event)
+	end)
+	CustomGameEventManager:RegisterListener("lod_pick_ability", function(_, event)
+		gm:OnPickAbility(event)
+	end)
 end
 
 function AILODGameMode:OnGameRulesStateChange()
@@ -186,7 +219,6 @@ function AILODGameMode:OnGameRulesStateChange()
 		if GameState:CanTransition(GameState.GAME_OVER) then
 			GameState:Transition(GameState.GAME_OVER)
 		else
-			-- Force terminal state if mid-flow
 			GameState.current = GameState.GAME_OVER
 		end
 	end
@@ -203,7 +235,7 @@ function AILODGameMode:BeginMatchFlow()
 		print("[AI-LOD] Starting LOD draft flow")
 		GameState:Transition(GameState.BAN)
 	else
-		print("[AI-LOD] V0.1 foundation flow → SPAWN → PLAYING")
+		print("[AI-LOD] Foundation flow -> SPAWN -> PLAYING")
 		GameState:Transition(GameState.SPAWN)
 	end
 end
@@ -212,10 +244,34 @@ function AILODGameMode:RunSpawnPhase()
 	print("[AI-LOD] SPAWN phase")
 
 	PlayerState:ForEachConnected(function(playerID, record)
-		local preferred = record.hero
+		local preferred = record.hero or (self.draftManager and self.draftManager:GetHeroPick(playerID))
 		local hero, heroName = self.heroManager:EnsureHeroForPlayer(playerID, preferred)
 		if hero then
 			print(string.format("[AI-LOD] Player %d ready with %s", playerID, tostring(heroName)))
+			-- Apply drafted kit
+			if self.enableLodDraft and record.abilities then
+				local basics = record.abilities.basic or {}
+				local ults = record.abilities.ultimate or {}
+				self.abilityManager:ApplyKit(hero, basics, ults)
+				local budgetOk = self.balanceManager:WithinBudget(
+					(function()
+						local all = {}
+						for _, a in ipairs(basics) do table.insert(all, a) end
+						for _, a in ipairs(ults) do table.insert(all, a) end
+						return all
+					end)()
+				)
+				print(string.format("[AI-LOD] Player %d kit budget ok=%s score=%s",
+					playerID, tostring(budgetOk),
+					tostring(self.balanceManager:Total(
+						(function()
+							local all = {}
+							for _, a in ipairs(basics) do table.insert(all, a) end
+							for _, a in ipairs(ults) do table.insert(all, a) end
+							return all
+						end)()
+					))))
+			end
 			hero:RemoveModifierByName("modifier_stunned")
 			hero.bAILODReady = true
 		else
@@ -241,7 +297,9 @@ function AILODGameMode:OnPlayerPickHero(event)
 	if not hero or hero:IsNull() then return end
 	local playerID = hero:GetPlayerOwnerID()
 	if not PlayerResource:IsValidPlayerID(playerID) then return end
-	PlayerState:SetHero(playerID, hero:GetUnitName())
+	if not self.enableLodDraft then
+		PlayerState:SetHero(playerID, hero:GetUnitName())
+	end
 	print(string.format("[AI-LOD] Pick recorded player %d -> %s", playerID, hero:GetUnitName()))
 end
 
@@ -261,6 +319,7 @@ function AILODGameMode:OnNPCSpawned(event)
 		end
 	else
 		unit:RemoveModifierByName("modifier_stunned")
+		self.respawnManager:OnHeroSpawn(unit)
 	end
 end
 
@@ -283,6 +342,56 @@ function AILODGameMode:OnBanHero(event)
 	if not GameState:Is(GameState.BAN) then return end
 	if type(event) ~= "table" then return end
 	self.banManager:HandleBan(self:EventPlayerID(event), event.hero)
+end
+
+function AILODGameMode:OnPickHero(event)
+	if not GameState:Is(GameState.HERO_DRAFT) then return end
+	if type(event) ~= "table" then return end
+	self.draftManager:HandleHeroPick(self:EventPlayerID(event), event.hero)
+end
+
+function AILODGameMode:OnRerollHero(event)
+	if not GameState:Is(GameState.HERO_DRAFT) then return end
+	if type(event) ~= "table" then return end
+	self.draftManager:HandleHeroReroll(self:EventPlayerID(event), event.category)
+end
+
+function AILODGameMode:OnPickAbility(event)
+	if not GameState:Is(GameState.ABILITY_DRAFT) then return end
+	if type(event) ~= "table" then return end
+	self.draftManager:HandleAbilityPick(self:EventPlayerID(event), event.ability)
+end
+
+function AILODGameMode:OnPickUlt(event)
+	if not GameState:Is(GameState.ULTIMATE_DRAFT) then return end
+	if type(event) ~= "table" then return end
+	self.draftManager:HandleUltPick(self:EventPlayerID(event), event.ability)
+end
+
+function AILODGameMode:OnConfirmUlt(event)
+	if not GameState:Is(GameState.ULTIMATE_DRAFT) then return end
+	if type(event) ~= "table" then return end
+	self.draftManager:HandleUltConfirm(self:EventPlayerID(event))
+end
+
+function AILODGameMode:OnDeathSlot(event)
+	if type(event) ~= "table" then return end
+	self.respawnManager:HandleDeathSelectSlot(self:EventPlayerID(event), event.slot or event.ability)
+end
+
+function AILODGameMode:OnDeathAbility(event)
+	if type(event) ~= "table" then return end
+	self.respawnManager:HandleDeathSelectAbility(self:EventPlayerID(event), event.ability)
+end
+
+function AILODGameMode:OnDeathReroll(event)
+	if type(event) ~= "table" then return end
+	self.respawnManager:HandleDeathReroll(self:EventPlayerID(event))
+end
+
+function AILODGameMode:OnDeathConfirm(event)
+	if type(event) ~= "table" then return end
+	self.respawnManager:HandleDeathConfirm(self:EventPlayerID(event))
 end
 
 -- Back-compat alias
