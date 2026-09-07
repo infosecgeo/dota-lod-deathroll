@@ -1,0 +1,27 @@
+"UpgradeAbilities"
+{
+	// Conservative DEATH-DRAFT allowlist, not universal Scepter/Shard support.
+	// These engine names assume the Dota build where the listed upgrade grants
+	// the spell. Engine AddAbility failure rejects the whole transaction.
+	// The actual recipient must own the upgrade (including consumed upgrades),
+	// and retain the listed parent spell in the complete confirmed loadout.
+	// All entries consume a BASIC slot; they are not extra free loadout slots.
+	"zuus_cloud"
+	{
+		"type"      "basic"
+		"upgrade"   "scepter"
+		"requires"  "zuus_lightning_bolt"
+	}
+	"juggernaut_swift_slash"
+	{
+		"type"      "basic"
+		"upgrade"   "scepter"
+		"requires"  "juggernaut_omni_slash"
+	}
+	"slark_depth_shroud"
+	{
+		"type"      "basic"
+		"upgrade"   "shard"
+		"requires"  "slark_shadow_dance"
+	}
+}

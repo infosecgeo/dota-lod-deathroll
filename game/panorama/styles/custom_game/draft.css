@@ -12,6 +12,7 @@
 	vertical-align: center;
 	flow-children: down;
 	visibility: collapse;
+	overflow: squish scroll;
 	background-color: #0d0d0dee;
 	padding: 20px;
 	border: 2px solid #5a4a2a;
@@ -260,4 +261,47 @@
 {
 	background-color: #2a5530;
 	border-color: #6d6;
+}
+
+Button:disabled
+{
+	opacity: 0.45;
+}
+
+.PreparationPanel
+{
+	width: 540px;
+	horizontal-align: left;
+	vertical-align: top;
+	margin-top: 80px;
+	margin-left: 20px;
+}
+
+.Scoreboard
+{
+	width: 100%;
+	flow-children: down;
+	overflow: squish scroll;
+	max-height: 520px;
+}
+
+.ScoreRow
+{
+	width: 100%;
+	flow-children: right;
+	padding: 8px;
+	background-color: #22222c;
+	margin-bottom: 2px;
+}
+
+.ScoreRow Label
+{
+	width: fill-parent-flow(1);
+	color: #eee;
+	font-size: 16px;
+}
+
+.ScoreRow .PlayerColumn
+{
+	width: 270px;
 }

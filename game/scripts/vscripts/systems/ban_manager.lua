@@ -1,9 +1,9 @@
 -- systems/ban_manager.lua
--- Phase 3: 50s server-validated hero ban.
+-- Phase 3: 30s server-validated hero ban.
 
 BanManager = BanManager or class({})
 
-local BAN_TIME = 50
+local BAN_TIME = 30
 
 function BanManager:constructor(heroManager)
 	self.heroManager = heroManager
@@ -12,14 +12,18 @@ function BanManager:constructor(heroManager)
 	self.onComplete = nil
 	self.timeLeft = BAN_TIME
 	self.timer = nil
+	self.active = false
 end
 
 function BanManager:Start(onComplete)
+	self:Cancel()
 	print("[BanManager] Start — hero ban, " .. BAN_TIME .. "s")
 	self.onComplete = onComplete
 	self.finished = false
 	self.playerBanned = {}
 	self.timeLeft = BAN_TIME
+	self.active = true
+	self.deadline = Time() + BAN_TIME
 
 	if self.heroManager then
 		self.heroManager:LoadPool()
@@ -29,24 +33,26 @@ function BanManager:Start(onComplete)
 	CustomGameEventManager:Send_ServerToAllClients("ai_lod_ban_start", {
 		time = BAN_TIME,
 		heroes = table.concat(pool, ","),
+		banned = table.concat(self.heroManager:GetBannedList(), ","),
+		locked = false,
 	})
 
 	self.timer = Timers:CreateTimer(function()
-		if self.finished then return nil end
-		self.timeLeft = self.timeLeft - 1
+		if not self.active or self.finished then return nil end
+		self.timeLeft = math.max(0, math.ceil(self.deadline - Time()))
 		CustomGameEventManager:Send_ServerToAllClients("ai_lod_ban_timer", { time = self.timeLeft })
 		if self.timeLeft <= 0 then
 			self:Finish()
 			return nil
 		end
 		return 1
-	end)
+	end, false)
 end
 
 function BanManager:HandleBan(playerID, heroName)
-	if self.finished then return end
+	if not self.active or self.finished then return end
 	if not GameState or not GameState:Is(GameState.BAN) then return end
-	if playerID == nil then return end
+	if playerID == nil or not PlayerResource:IsValidPlayerID(playerID) then return end
 	if self.playerBanned[playerID] then return end
 
 	local ok, reason = self.heroManager:Ban(heroName, playerID)
@@ -65,6 +71,7 @@ function BanManager:HandleBan(playerID, heroName)
 		playerID = playerID,
 		hero = heroName,
 	})
+	self:SyncPlayer(playerID)
 
 	-- Early finish when every connected player has banned
 	local pending = false
@@ -79,12 +86,36 @@ function BanManager:HandleBan(playerID, heroName)
 end
 
 function BanManager:Finish()
-	if self.finished then return end
+	if not self.active or self.finished then return end
 	self.finished = true
+	self.active = false
 	if self.timer then Timers:RemoveTimer(self.timer) self.timer = nil end
 	CustomGameEventManager:Send_ServerToAllClients("ai_lod_ban_end", {
 		banned = table.concat((self.heroManager and self.heroManager:GetBannedList()) or {}, ","),
 	})
 	print("[BanManager] Complete")
-	if self.onComplete then self.onComplete() end
+	local cb = self.onComplete
+	self.onComplete = nil
+	if cb then cb() end
+end
+
+function BanManager:Cancel()
+	self.active = false
+	self.finished = true
+	self.onComplete = nil
+	if self.timer then Timers:RemoveTimer(self.timer) self.timer = nil end
+end
+
+function BanManager:SyncPlayer(playerID)
+	if not self.active or self.finished then return end
+	local player = PlayerResource:GetPlayer(playerID)
+	if not player then return end
+	local record = PlayerState and PlayerState:Get(playerID)
+	CustomGameEventManager:Send_ServerToPlayer(player, "ai_lod_ban_start", {
+		time = self.timeLeft,
+		heroes = table.concat(self.heroManager:LoadPool(), ","),
+		banned = table.concat(self.heroManager:GetBannedList(), ","),
+		picked = table.concat(record and record.bannedHeroes or {}, ","),
+		locked = self.playerBanned[playerID] == true,
+	})
 end
