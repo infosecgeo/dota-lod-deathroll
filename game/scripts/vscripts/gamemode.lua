@@ -19,6 +19,9 @@ LinkLuaModifier("modifier_ai_lod_preparation", "modifiers/modifier_ai_lod_prepar
 AILODGameMode = AILODGameMode or class({})
 local ENABLE_LOD_DRAFT = true
 local FILL_EMPTY_WITH_BOTS = true
+-- Native team-select countdown before FinishCustomGameSetup.
+local SETUP_COUNTDOWN = 10
+-- Custom LOD lobby countdown after PRE_GAME (ban draft gate).
 local LOBBY_COUNTDOWN = 5
 local LOBBY_AUTO_READY_AFTER = 8
 local PREPARATION_TIMEOUT = 30
@@ -65,8 +68,18 @@ end
 function AILODGameMode:SetupGameRules()
 	GameRules:SetCustomGameTeamMaxPlayers(DOTA_TEAM_GOODGUYS, 5)
 	GameRules:SetCustomGameTeamMaxPlayers(DOTA_TEAM_BADGUYS, 5)
-	-- Extra setup time so empty slots can be filled with hard AI bots.
-	GameRules:SetCustomGameSetupAutoLaunchDelay(15)
+	-- Server owns setup: assign players, fill bots, show countdown, then launch.
+	if GameRules.SetCustomGameSetupTimeout then
+		-- -1 keeps the panel open until we call FinishCustomGameSetup.
+		GameRules:SetCustomGameSetupTimeout(-1)
+	end
+	if GameRules.EnableCustomGameSetupAutoLaunch then
+		GameRules:EnableCustomGameSetupAutoLaunch(true)
+	end
+	GameRules:SetCustomGameSetupAutoLaunchDelay(SETUP_COUNTDOWN)
+	if GameRules.SetCustomGameSetupRemainingTime then
+		GameRules:SetCustomGameSetupRemainingTime(SETUP_COUNTDOWN)
+	end
 	GameRules:SetStrategyTime(0)
 	GameRules:SetShowcaseTime(0)
 	GameRules:SetPostGameTime(30)
@@ -240,10 +253,7 @@ function AILODGameMode:OnGameRulesStateChange()
 	end
 	if self.ended then return end
 	if state == DOTA_GAMERULES_STATE_CUSTOM_GAME_SETUP then
-		if self.fillEmptyWithBots and self.botManager then
-			self.botManager:FillEmptySlots()
-			self:PublishRoster()
-		end
+		self:StartCustomGameSetup()
 	elseif state == DOTA_GAMERULES_STATE_PRE_GAME then
 		self.draftPause = true
 		PauseGame(true)
@@ -263,6 +273,56 @@ function AILODGameMode:OnGameRulesStateChange()
 	end
 end
 
+function AILODGameMode:StartCustomGameSetup()
+	if self.setupStarted or self.ended then return end
+	self.setupStarted = true
+	self.setupOpenedAt = Time()
+	self.setupStatus = "filling"
+	print(string.format("[AI-LOD] Custom game setup: %ds countdown, bot fill enabled=%s",
+		SETUP_COUNTDOWN, tostring(self.fillEmptyWithBots)))
+
+	if GameRules.EnableCustomGameSetupAutoLaunch then
+		GameRules:EnableCustomGameSetupAutoLaunch(true)
+	end
+	if GameRules.SetCustomGameSetupRemainingTime then
+		GameRules:SetCustomGameSetupRemainingTime(SETUP_COUNTDOWN)
+	end
+
+	if self.fillEmptyWithBots and self.botManager then
+		self.botManager:FillEmptySlots()
+	end
+	self:PublishRoster()
+
+	Timers:CreateTimer(function()
+		if self.ended then return end
+		if GameRules:State_Get() ~= DOTA_GAMERULES_STATE_CUSTOM_GAME_SETUP then return end
+
+		if self.fillEmptyWithBots and self.botManager then
+			self.botManager:FillEmptySlots()
+		end
+
+		local remaining = math.max(0, math.ceil(SETUP_COUNTDOWN - (Time() - self.setupOpenedAt)))
+		self.setupStatus = remaining > 0 and "countdown" or "launching"
+		self.setupDeadline = self.setupOpenedAt + SETUP_COUNTDOWN
+		if GameRules.SetCustomGameSetupRemainingTime then
+			GameRules:SetCustomGameSetupRemainingTime(remaining)
+		end
+		self:PublishRoster()
+
+		if remaining <= 0 then
+			if GameRules.LockCustomGameSetupTeamAssignment then
+				pcall(function() GameRules:LockCustomGameSetupTeamAssignment(true) end)
+			end
+			if GameRules.FinishCustomGameSetup then
+				print("[AI-LOD] Finishing custom game setup after countdown")
+				pcall(function() GameRules:FinishCustomGameSetup() end)
+			end
+			return
+		end
+		return 0.5
+	end, false)
+end
+
 function AILODGameMode:BeginMatchFlow()
 	if self.flowStarted or self.ended then return end
 	self.flowStarted = true
@@ -277,10 +337,12 @@ function AILODGameMode:BeginMatchFlow()
 	self:PublishRoster()
 	Timers:CreateTimer(function()
 		if self.ended or not GameState:Is(GameState.LOBBY) then return end
-		-- Humans who loaded the UI but never pressed Ready still start after a short grace period.
+		-- Connected humans start after a short grace period even if the UI never
+		-- reported ready (so bot-filled lobbies are not stuck forever).
 		if self.lobbyOpenedAt and Time() >= self.lobbyOpenedAt + LOBBY_AUTO_READY_AFTER then
 			PlayerState:ForEachParticipant(function(playerID, record)
-				if not PlayerState:IsBot(playerID) and record.clientReady then
+				if not PlayerState:IsBot(playerID) then
+					record.clientReady = true
 					record.lobbyReady = true
 				end
 			end)
@@ -357,16 +419,27 @@ function AILODGameMode:RosterPayload()
 			name = record.botName or "",
 		})
 	end)
-	local deadline = GameState:Is(GameState.LOBBY) and self.lobbyDeadline
+	local inSetup = GameRules.State_Get and GameRules:State_Get() == DOTA_GAMERULES_STATE_CUSTOM_GAME_SETUP
+	local deadline = inSetup and self.setupDeadline
+		or GameState:Is(GameState.LOBBY) and self.lobbyDeadline
 		or self.draftManager and self.draftManager.active and self.draftManager.deadline
 		or GameState:Is(GameState.BAN) and self.banManager.deadline
 		or self.presentationDeadline
+	local status = GameState:Name()
+	if inSetup then
+		status = self.setupStatus or "countdown"
+	elseif GameState:Is(GameState.LOBBY) then
+		status = self.lobbyStatus or "waiting_for_players"
+	end
 	return { players = players, required_players = self.requiredPlayers or (IsInToolsMode() and 1 or 2),
 		time = math.max(0, math.ceil((deadline or Time()) - Time())),
-		status = GameState:Is(GameState.LOBBY) and (self.lobbyStatus or "waiting_for_players") or GameState:Name(),
-		phase = GameState:Name(), total = #players, completed = completed, locked = PlayerState.roster ~= nil,
+		status = status,
+		phase = inSetup and "SETUP" or GameState:Name(), total = #players, completed = completed,
+		locked = PlayerState.roster ~= nil,
 		team_slots = 5, max_players = 10,
 		banned = table.concat(self.heroManager and self.heroManager:GetBannedList() or {}, ","),
+		setup_countdown = SETUP_COUNTDOWN,
+		lobby_countdown = LOBBY_COUNTDOWN,
 	}
 end
 

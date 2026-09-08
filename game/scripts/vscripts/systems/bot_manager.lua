@@ -21,6 +21,10 @@ function BotManager:constructor(gameMode)
 	self.usedNames = {}
 end
 
+function BotManager:IsPlayableTeam(team)
+	return team == DOTA_TEAM_GOODGUYS or team == DOTA_TEAM_BADGUYS
+end
+
 function BotManager:TeamCount(team)
 	local count = 0
 	for playerID = 0, DOTA_MAX_PLAYERS - 1 do
@@ -29,6 +33,76 @@ function BotManager:TeamCount(team)
 		end
 	end
 	return count
+end
+
+function BotManager:TeamsFull()
+	return self:TeamCount(DOTA_TEAM_GOODGUYS) >= TEAM_SIZE
+		and self:TeamCount(DOTA_TEAM_BADGUYS) >= TEAM_SIZE
+end
+
+function BotManager:AssignTeam(playerID, team)
+	if playerID == nil or playerID < 0 or not self:IsPlayableTeam(team) then return false end
+	if PlayerResource.SetCustomTeamAssignment then
+		pcall(function() PlayerResource:SetCustomTeamAssignment(playerID, team) end)
+	end
+	local player = PlayerResource.GetPlayer and PlayerResource:GetPlayer(playerID)
+	if player and not player:IsNull() and player.SetTeam then
+		pcall(function() player:SetTeam(team) end)
+	end
+	return PlayerResource:GetTeam(playerID) == team
+end
+
+function BotManager:BalancedTeam()
+	local radiant = self:TeamCount(DOTA_TEAM_GOODGUYS)
+	local dire = self:TeamCount(DOTA_TEAM_BADGUYS)
+	if radiant < TEAM_SIZE and (radiant <= dire or dire >= TEAM_SIZE) then
+		return DOTA_TEAM_GOODGUYS
+	end
+	if dire < TEAM_SIZE then
+		return DOTA_TEAM_BADGUYS
+	end
+	return nil
+end
+
+function BotManager:MarkBot(playerID, name, team)
+	if name and name ~= "" then
+		self.usedNames[name] = true
+		self.botNames[playerID] = name
+	end
+	if PlayerResource.SetPlayerName and name and name ~= "" then
+		pcall(function() PlayerResource:SetPlayerName(playerID, name) end)
+	end
+	if team then self:AssignTeam(playerID, team) end
+	local record = PlayerState:Ensure(playerID)
+	if record then
+		record.isBot = true
+		record.botName = name or record.botName or ("Bot " .. tostring(playerID))
+		record.clientReady = true
+		record.lobbyReady = true
+		record.strategyReady = true
+	end
+end
+
+function BotManager:AutoAssignUnassigned()
+	local unassigned = {}
+	for playerID = 0, DOTA_MAX_PLAYERS - 1 do
+		if PlayerResource:IsValidPlayerID(playerID) then
+			local team = PlayerResource:GetTeam(playerID)
+			if not self:IsPlayableTeam(team) then
+				table.insert(unassigned, playerID)
+			end
+		end
+	end
+	for _, playerID in ipairs(unassigned) do
+		local team = self:BalancedTeam()
+		if not team then break end
+		if self:AssignTeam(playerID, team) then
+			if PlayerResource.IsFakeClient and PlayerResource:IsFakeClient(playerID) then
+				self:MarkBot(playerID, self.botNames[playerID] or self:RandomName(), team)
+			end
+			print(string.format("[BotManager] Auto-assigned player %d to team %d", playerID, team))
+		end
+	end
 end
 
 function BotManager:RandomName()
@@ -85,7 +159,8 @@ function BotManager:TryAddBot(team, name)
 	if GameRules.AddBotPlayerWithEntityScript then
 		local ok, result = pcall(function()
 			-- Empty hero: LOD owns hero creation after the draft completes.
-			return GameRules:AddBotPlayerWithEntityScript("", name, team, "", true)
+			-- false = add immediately so team assignment sticks during setup.
+			return GameRules:AddBotPlayerWithEntityScript("", name, team, "", false)
 		end)
 		if ok and type(result) == "number" and result >= 0 and result < DOTA_MAX_PLAYERS then
 			addedID = result
@@ -102,8 +177,7 @@ function BotManager:TryAddBot(team, name)
 
 	if addedID == nil then
 		for playerID = 0, DOTA_MAX_PLAYERS - 1 do
-			if PlayerResource:IsValidPlayerID(playerID) and not before[playerID]
-				and PlayerResource:GetTeam(playerID) == team then
+			if PlayerResource:IsValidPlayerID(playerID) and not before[playerID] then
 				addedID = playerID
 				break
 			end
@@ -113,28 +187,21 @@ function BotManager:TryAddBot(team, name)
 	if addedID == nil or addedID < 0 or addedID >= DOTA_MAX_PLAYERS then return nil end
 	if not PlayerResource:IsValidPlayerID(addedID) then return nil end
 
-	if PlayerResource.SetCustomTeamAssignment then
-		pcall(function() PlayerResource:SetCustomTeamAssignment(addedID, team) end)
-	end
-	if PlayerResource.SetPlayerName then
-		pcall(function() PlayerResource:SetPlayerName(addedID, name) end)
-	end
-	self.botNames[addedID] = name
-	local record = PlayerState:Ensure(addedID)
-	if record then
-		record.isBot = true
-		record.botName = name
-		record.clientReady = true
-		record.lobbyReady = true
-		record.strategyReady = true
+	self:MarkBot(addedID, name, team)
+	if PlayerResource:GetTeam(addedID) ~= team then
+		print(string.format("[BotManager] Bot %d failed team assign to %d", addedID, team))
+		return nil
 	end
 	print(string.format("[BotManager] Filled slot %d on team %d as '%s'", addedID, team, name))
 	return addedID
 end
 
 function BotManager:FillEmptySlots()
-	if self.filled or PlayerState.roster then return self.filled end
+	if PlayerState.roster then return self.filled end
+	if self.filled and self:TeamsFull() then return true end
+
 	self:ApplyHardDifficulty()
+	self:AutoAssignUnassigned()
 
 	local added = 0
 	for _, team in ipairs({ DOTA_TEAM_GOODGUYS, DOTA_TEAM_BADGUYS }) do
@@ -151,10 +218,13 @@ function BotManager:FillEmptySlots()
 		end
 	end
 
-	self.filled = true
-	print(string.format("[BotManager] Bot fill complete (+%d). Radiant=%d Dire=%d",
-		added, self:TeamCount(DOTA_TEAM_GOODGUYS), self:TeamCount(DOTA_TEAM_BADGUYS)))
-	return added > 0 or self:TeamCount(DOTA_TEAM_GOODGUYS) + self:TeamCount(DOTA_TEAM_BADGUYS) > 0
+	-- Reclaim any bots that still sit in the unassigned column of team select.
+	self:AutoAssignUnassigned()
+	self.filled = self:TeamsFull()
+	print(string.format("[BotManager] Bot fill complete (+%d, full=%s). Radiant=%d Dire=%d",
+		added, tostring(self.filled), self:TeamCount(DOTA_TEAM_GOODGUYS), self:TeamCount(DOTA_TEAM_BADGUYS)))
+	return self.filled or added > 0
+		or self:TeamCount(DOTA_TEAM_GOODGUYS) + self:TeamCount(DOTA_TEAM_BADGUYS) > 0
 end
 
 function BotManager:IsBot(playerID)
