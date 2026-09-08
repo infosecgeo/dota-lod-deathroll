@@ -67,6 +67,7 @@ DOTA_GAMERULES_STATE_POST_GAME = 9
 LUA_MODIFIER_MOTION_NONE = 0
 
 local clock, tools, configuredSeed, nativeState = 0, false, 0, 7
+local gamePaused = false
 local teams, connected, players, entities, heroes, gold, fakeClients
 local events, netTables, handlers, precaches, assetCallbacks, deferAssets
 local nextBotID
@@ -100,6 +101,12 @@ PlayerResource = {
 	GetGold = function(_, id) return gold[id] or 0 end,
 	SetCustomTeamAssignment = function(_, id, team) teams[id] = team end,
 	SetPlayerName = function() end,
+	ReplaceHeroWith = function(_, id, heroName)
+		local player = players[id]
+		if not player then return nil end
+		heroes[id] = nil
+		return CreateHeroForPlayer(heroName, player)
+	end,
 }
 GameRules = {
 	GetGameTime = function() return clock end,
@@ -114,6 +121,7 @@ GameRules = {
 		nativeState = DOTA_GAMERULES_STATE_GAME_IN_PROGRESS
 		GameState.owner:OnGameRulesStateChange()
 	end,
+	IsGamePaused = function() return gamePaused == true end,
 	SetSafeToLeave = function() end,
 	SetGameWinner = function(self, winner) self.winner = winner end,
 	GetGameWinner = function(self) return self.winner end,
@@ -127,7 +135,7 @@ GameRules = {
 		nativeState = DOTA_GAMERULES_STATE_PRE_GAME
 		if GameState.owner then GameState.owner:OnGameRulesStateChange() end
 	end,
-	AddBotPlayerWithEntityScript = function(_, _hero, name, team)
+	AddBotPlayerWithEntityScript = function(_, hero, name, team, _script, defer)
 		local id = nil
 		for candidate = 0, DOTA_MAX_PLAYERS - 1 do
 			if teams[candidate] == nil then id = candidate break end
@@ -141,7 +149,30 @@ GameRules = {
 			SetTeam = function(_, nextTeam) teams[id] = nextTeam end,
 		}
 		entities[1000 + id] = players[id]
+		-- Deferred bots occupy a team-select slot without spawning a hero body.
+		if defer ~= true and hero and hero ~= "" then
+			CreateHeroForPlayer(hero, players[id])
+		end
 		return id
+	end,
+}
+Tutorial = {
+	AddBot = function(_, hero, _lane, _difficulty, radiant)
+		local team = radiant and DOTA_TEAM_GOODGUYS or DOTA_TEAM_BADGUYS
+		for candidate = 0, DOTA_MAX_PLAYERS - 1 do
+			if teams[candidate] == nil then
+				teams[candidate], connected[candidate], gold[candidate], fakeClients[candidate] = team, true, 600, true
+				players[candidate] = {
+					id = candidate, events = {},
+					IsNull = function() return false end,
+					GetPlayerID = function() return candidate end,
+					SetTeam = function(_, nextTeam) teams[candidate] = nextTeam end,
+				}
+				entities[1000 + candidate] = players[candidate]
+				if hero and hero ~= "" then CreateHeroForPlayer(hero, players[candidate]) end
+				return
+			end
+		end
 	end,
 }
 MatchResults = { Snapshot = function(_, winner) return { winner = winner } end }
@@ -154,6 +185,7 @@ Timers = {
 	RemoveTimer = function(self, id) self.callbacks[id] = nil end,
 	Stop = function(self) self.callbacks = {} end,
 }
+Timers.callbacks, Timers.nextID = {}, 0
 local function advance(seconds)
 	for _ = 1, seconds do
 		clock = clock + 1
@@ -174,6 +206,7 @@ end
 function CreateHeroForPlayer(name, player)
 	local hero = { name = name, owner = player.id, abilities = {}, inventory = {} }
 	function hero:IsNull() return false end
+	function hero:IsRealHero() return true end
 	function hero:GetUnitName() return self.name end
 	function hero:GetPlayerOwnerID() return self.owner end
 	function hero:GetGold() return gold[self.owner] end
@@ -224,6 +257,7 @@ local function addPlayer(id, team, bot)
 end
 local function setup(count)
 	clock, tools, configuredSeed, nativeState = 0, false, 0, 7
+	gamePaused = false
 	teams, connected, players, entities, heroes, gold, fakeClients = {}, {}, {}, {}, {}, {}, {}
 	events, netTables, handlers, precaches, assetCallbacks = {}, {}, {}, {}, {}
 	deferAssets, GameRules.winner, nextBotID = false, nil, 20
@@ -297,6 +331,7 @@ PlayerState:ForEachParticipant(function(id, record)
 		botSeen = botSeen or PlayerState:IsBot(id)
 		check(record.lobbyReady and record.clientReady, "bots are lobby-ready")
 		check(type(record.botName) == "string" and record.botName ~= "", "bots receive random names")
+		check(heroes[id] == nil, "deferred bots occupy a slot without a spawned hero body")
 	end
 end)
 check(botSeen, "fake clients registered as bots")
@@ -331,7 +366,18 @@ advance(10)
 check(GameRules.setupFinished == true, "setup countdown finishes custom game setup")
 check(nativeState == DOTA_GAMERULES_STATE_PRE_GAME, "engine advanced to pre-game")
 check(owner.flowStarted, "LOD lobby flow starts after setup")
-advance(8)
+-- A slot that empties mid-lobby is detected only when the countdown ends.
+owner.fillEmptyWithBots = false
+teams[1], players[1], entities[1001], fakeClients[1], connected[1] = nil, nil, nil, nil, nil
+PlayerState.players[1] = nil
+advance(7)
+check(not owner.botManager:TeamsFull(), "emptied slot stays open during the lobby countdown")
+check(not PlayerState:IsParticipant(1), "vacated seat is not a lobby participant yet")
+owner.fillEmptyWithBots = true
+-- The countdown restarts when the roster signature changes; wait it out.
+advance(6)
+check(PlayerState:IsBot(1), "lobby countdown end fills the detected empty slot")
+check(owner.botManager:TeamsFull(), "both teams are full once the countdown ends")
 check(PlayerState:Get(0).lobbyReady == true and PlayerState:Get(0).clientReady == true,
 	"lobby auto-ready without UI after grace")
 advance(5)
@@ -350,7 +396,7 @@ PlayerState:ForEachParticipant(function(id, record)
 		check(record.hero == nil, "AutoHero is a no-op until HERO_DRAFT")
 	end
 end)
--- Ensure every bot has banned without finishing the phase early.
+-- Bots ban only through the scheduled panel-paint delay, never instantly.
 owner.botManager:AutoBan(owner.banManager)
 PlayerState:ForEachParticipant(function(id, record)
 	if PlayerState:IsBot(id) then check(#record.bannedHeroes > 0, "bots ban during ban phase") end
@@ -365,8 +411,11 @@ end
 check(humanBan ~= nil, "human has a legal ban target")
 owner.banManager:HandleBan(0, humanBan)
 check(#PlayerState:Get(0).bannedHeroes > 0, "human ban recorded")
-phase(GameState.BAN, "all-ready ban waits for minimum visible time")
-advance(5)
+-- Early finish is blocked until the panel has been visible for its minimum.
+if not owner.banManager:MinVisibleElapsed() then
+	phase(GameState.BAN, "all-ready ban waits for minimum visible time")
+	advance(5)
+end
 phase(GameState.HERO_DRAFT, "ban completes into hero draft only after bans")
 check(events.ai_lod_ban_end ~= nil, "ban end fires before hero locks")
 owner.botManager:AutoHero(owner.draftManager)
@@ -397,7 +446,8 @@ local function lifecycle(seed, repair)
 	addPlayer(12, 2)
 	check(not PlayerState:IsParticipant(12), "new slot cannot enter frozen draft")
 	connected[9] = false
-	advance(50)
+	check(mode.banManager.deadline - Time() == 60, "ban phase gives a 1-minute choice window")
+	advance(60)
 	phase(GameState.HERO_DRAFT)
 	mode:OnClientReady(0)
 	local offer = players[0].events.ai_lod_hero_offers
@@ -405,20 +455,24 @@ local function lifecycle(seed, repair)
 	check(type(preview) == "string" and preview ~= "", "native ability preview CSV")
 	check(netTables.roster.banned ~= "", "bans persist after BAN")
 	check(not draft:AcceptAction(12, "hero"), "nonparticipant draft rejection")
-	advance(30)
+	check(draft.deadline - Time() == 60, "hero draft gives a 1-minute choice window")
+	advance(60)
 	phase(GameState.ABILITY_DRAFT)
+	check(draft.deadline - Time() == 60, "ability draft gives a 1-minute choice window")
 	draft:HandleAbilityPick(0, draft.abilityOffers[0].ultimate[1])
 	check(#PlayerState:Get(0).abilities.ultimate == 0, "basic phase cannot pick an ultimate")
-	advance(30)
+	advance(60)
 	phase(GameState.INITIAL_ULTIMATE)
 	PlayerState:ForEachParticipant(function(_, record)
 		check(#record.abilities.basic == 3 and #record.abilities.ultimate == 0, "basic timeout picks only basics")
 	end)
 	mode:OnClientReady(0)
 	check(players[0].events.ai_lod_initial_ult_offers ~= nil, "initial ultimate reconnect snapshot")
-	advance(20)
+	check(draft.deadline - Time() == 60, "initial ultimate gives a 1-minute choice window")
+	advance(60)
 	phase(GameState.ULTIMATE_DRAFT)
-	advance(20)
+	check(draft.deadline - Time() == 60, "bonus ultimate gives a 1-minute choice window")
+	advance(60)
 	phase(GameState.BUILD_CONFIRMATION)
 	local original = signature()
 	local seen = {}
@@ -492,6 +546,63 @@ local function lifecycle(seed, repair)
 	return original
 end
 
+local function fallbackLifecycle(seed)
+	local mode = setup(10)
+	random:Init(999)
+	random:Int(1, 100)
+	tools = true
+	mode:BeginMatchFlow()
+	advance(9)
+	phase(GameState.BAN)
+	connected[9] = false
+	advance(60)
+	phase(GameState.HERO_DRAFT)
+	advance(60)
+	phase(GameState.ABILITY_DRAFT)
+	advance(60)
+	phase(GameState.INITIAL_ULTIMATE)
+	advance(60)
+	phase(GameState.ULTIMATE_DRAFT)
+	advance(60)
+	phase(GameState.BUILD_CONFIRMATION)
+	-- Player 0's first base-hero install keeps failing: the timeout must not
+	-- abort the whole match; the slot falls back to any unlocked hero.
+	local draftedHero = PlayerState:Get(0).hero
+	mode.heroManager.EnsureHeroForPlayer = function(self, playerID, preferredHero)
+		if playerID == 0 and preferredHero == draftedHero then return nil, preferredHero end
+		return HeroManager.EnsureHeroForPlayer(self, playerID, preferredHero)
+	end
+	-- Build confirmation (15s) plus the full 30s preparation timeout.
+	advance(46)
+	phase(GameState.STRATEGY, "one broken slot falls back instead of aborting the match")
+	local record = PlayerState:Get(0)
+	check(record.prepared and record.preparedHero ~= nil, "fallback slot prepared")
+	check(record.hero ~= draftedHero, "fallback installs an alternate base hero")
+	check(#record.abilities.basic == 3 and #record.abilities.ultimate == 2,
+		"fallback kit keeps 3 basics and 2 ultimates")
+	advance(15)
+	phase(GameState.INTRODUCTION)
+	advance(5)
+	phase(GameState.PLAYING)
+	return record.hero
+end
+
+owner = setup(1)
+gamePaused = true
+addPlayer(1, 3)
+CreateHeroForPlayer("npc_dota_hero_axe", players[1])
+owner:EnforcePlaceholderHeroes()
+check(heroes[1] ~= nil and heroes[1]:GetUnitName() == "npc_dota_hero_wisp",
+	"paused sweep strips a pre-draft real hero back to placeholder")
+CreateHeroForPlayer("npc_dota_hero_axe", players[1])
+gamePaused = false
+owner:EnforcePlaceholderHeroes()
+check(heroes[1]:GetUnitName() == "npc_dota_hero_axe",
+	"live pre-draft entities are never replaced outside the pause")
+
+local fallbackHero = fallbackLifecycle(777)
+check(fallbackLifecycle(777) == fallbackHero, "fallback preparation stays seed deterministic")
+
 local replay = lifecycle(12345, true)
 check(replay == lifecycle(12345, false), "same seed, roster and events reproduce all draft selections")
 check(replay ~= lifecycle(54321, false), "different seed changes draft selections")
@@ -525,7 +636,7 @@ owner.heroManager.selected = {}
 for _, hero in ipairs(owner.heroManager:LoadPool()) do owner.heroManager.banned[hero] = true end
 owner.draftManager.heroOffers = {}
 owner.draftManager:StartHeroDraft(function() error("empty pool must not advance") end)
-advance(30)
+advance(60)
 phase(GameState.GAME_END)
 check(owner.preparationError == "hero_pool_exhausted", "exhausted pool fails closed, not stuck at zero")
 
@@ -537,7 +648,7 @@ owner.heroManager:TrySelect(base, 0)
 PlayerState:SetHero(0, base)
 owner.abilityManager.pools.regular = {}
 owner.draftManager:StartAbilityDraft(function() error("empty abilities must not advance") end)
-advance(30)
+advance(60)
 phase(GameState.GAME_END)
 check(owner.preparationError == "basic_pool_exhausted", "impossible basic pool has bounded termination")
 
@@ -568,8 +679,11 @@ check(not owner.draftManager:ValidateAndRecover(), "validation recovery pass bud
 owner = setup(1)
 GameState.current = GameState.ABILITY_VALIDATION
 owner.PreparePlayer = function() return false end
+-- Fallback also fails (engine cannot install any hero), so the bounded
+-- timeout still fails closed instead of stalling forever.
+owner.heroManager.EnsureHeroForPlayer = function() return nil end
 owner:PrepareHeroes()
-advance(30)
+advance(31)
 phase(GameState.GAME_END)
 check(owner.preparationError == "hero_preparation_failed", "engine preparation failure is bounded and fail closed")
 

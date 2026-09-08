@@ -164,12 +164,44 @@ function BotManager:TryAddBot(team, name)
 		-- REAL hero from the engine when native selection ends, which skips the
 		-- BAN_HEROES gate. The wisp is replaced with the drafted base later.
 		local ok, result = pcall(function()
-			-- false = add immediately so team assignment sticks during setup.
-			return GameRules:AddBotPlayerWithEntityScript(PLACEHOLDER_HERO, name, team, "", false)
+			-- true = defer the entity spawn: during CUSTOM_GAME_SETUP the bot only
+			-- occupies a team-select slot, so no wisp body exists before the
+			-- PRE_GAME server pause. ReplaceHeroWith then installs the drafted
+			-- base while the world is held.
+			return GameRules:AddBotPlayerWithEntityScript(PLACEHOLDER_HERO, name, team, "", true)
 		end)
 		if ok and type(result) == "number" and result >= 0 and result < DOTA_MAX_PLAYERS then
 			addedID = result
 		end
+	end
+
+	-- Track the new slot across ticks: deferred setup bots already reserve a
+	-- player ID, while the Tutorial fallback joins asynchronously.
+	local pending = addedID
+	local attempts = addedID ~= nil and 1 or 0
+	local function settle()
+		if addedID == nil then
+			for playerID = 0, DOTA_MAX_PLAYERS - 1 do
+				if PlayerResource:IsValidPlayerID(playerID) and not before[playerID] then
+					addedID = playerID
+					break
+				end
+			end
+		end
+		if addedID ~= nil then
+			if pending == nil or addedID ~= pending then self:MarkBot(addedID, name, team) end
+			if PlayerResource:GetTeam(addedID) ~= team then self:AssignTeam(addedID, team) end
+			if PlayerResource:GetTeam(addedID) == team then
+				print(string.format("[BotManager] Filled slot %d on team %d as '%s'", addedID, team, name))
+				return nil
+			end
+		end
+		attempts = attempts + 1
+		if attempts >= 20 then
+			print(string.format("[BotManager] Bot never materialized on team %d", team))
+			return nil
+		end
+		return 0.5
 	end
 
 	if addedID == nil and Tutorial and Tutorial.AddBot then
@@ -190,16 +222,26 @@ function BotManager:TryAddBot(team, name)
 		end
 	end
 
-	if addedID == nil or addedID < 0 or addedID >= DOTA_MAX_PLAYERS then return nil end
-	if not PlayerResource:IsValidPlayerID(addedID) then return nil end
-
-	self:MarkBot(addedID, name, team)
-	if PlayerResource:GetTeam(addedID) ~= team then
-		print(string.format("[BotManager] Bot %d failed team assign to %d", addedID, team))
-		return nil
+	if addedID ~= nil and (addedID < 0 or addedID >= DOTA_MAX_PLAYERS
+		or not PlayerResource:IsValidPlayerID(addedID)) then
+		addedID = nil
 	end
-	print(string.format("[BotManager] Filled slot %d on team %d as '%s'", addedID, team, name))
-	return addedID
+	if addedID == nil and not (Tutorial and Tutorial.AddBot) then return nil end
+
+	if addedID ~= nil then
+		self:MarkBot(addedID, name, team)
+		if PlayerResource:GetTeam(addedID) ~= team then
+			print(string.format("[BotManager] Bot %d failed team assign to %d", addedID, team))
+			Timers:CreateTimer(settle, false)
+			return nil
+		end
+		print(string.format("[BotManager] Filled slot %d on team %d as '%s'", addedID, team, name))
+		return addedID
+	end
+	-- Await the asynchronous Tutorial join so the slot is registered, named and
+	-- lobby-ready instead of staying invisible to the roster.
+	Timers:CreateTimer(settle, false)
+	return nil
 end
 
 function BotManager:FillEmptySlots()

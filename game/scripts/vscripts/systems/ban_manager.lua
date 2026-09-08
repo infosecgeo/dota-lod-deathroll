@@ -3,7 +3,7 @@
 
 BanManager = BanManager or class({})
 
-local BAN_TIME = 50
+local BAN_TIME = 60
 -- Keep BAN_HEROES on screen long enough for the panel to open before an
 -- all-ready early finish (bots ban quickly once the phase is live).
 local BAN_MIN_VISIBLE = 5
