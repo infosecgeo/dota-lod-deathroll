@@ -305,9 +305,8 @@ function AILODGameMode:OnGameRulesStateChange()
 	elseif state == DOTA_GAMERULES_STATE_PRE_GAME then
 		self.draftPause = true
 		PauseGame(true)
-		if self.fillEmptyWithBots and self.botManager then
-			self.botManager:FillEmptySlots()
-		end
+		-- No bot fill here: empty slots are detected and filled once the lobby
+		-- countdown ends, immediately before the roster locks.
 		self:BeginMatchFlow()
 	elseif state == DOTA_GAMERULES_STATE_GAME_IN_PROGRESS then
 		if self.spawnReady and GameState:Is(GameState.SPAWN) then
@@ -412,9 +411,6 @@ end
 function AILODGameMode:BeginMatchFlow()
 	if self.flowStarted or self.ended then return end
 	self.flowStarted = true
-	if self.fillEmptyWithBots and self.botManager then
-		self.botManager:FillEmptySlots()
-	end
 	self:EnforcePlaceholderHeroes()
 	self.lobbyOpenedAt = Time()
 	-- Ensure the lobby UI has authoritative state even if the client missed Activate.
@@ -446,6 +442,12 @@ function AILODGameMode:BeginMatchFlow()
 					self.draftSeed = seed
 					DraftRandom:Init(seed)
 				end
+			end
+			-- Countdown ended: detect empty Radiant/Dire slots (late leavers,
+			-- never-joined seats) and fill them with bots before the roster
+			-- locks and BAN_HEROES begins.
+			if self.fillEmptyWithBots and self.botManager then
+				self.botManager:FillEmptySlots()
 			end
 			PlayerState:LockRoster()
 			if self.enableLodDraft then
@@ -579,6 +581,9 @@ function AILODGameMode:EnforcePlaceholderHeroes()
 	if not GameState:In(GameState.LOBBY, GameState.BAN, GameState.GENERATE_HERO_POOLS,
 		GameState.HERO_DRAFT, GameState.ABILITY_DRAFT, GameState.INITIAL_ULTIMATE,
 		GameState.ULTIMATE_DRAFT, GameState.BUILD_CONFIRMATION) then return end
+	-- ReplaceHeroWith on a live entity mid-frame freezes the client on the old
+	-- hero; only strip while the PRE_GAME server pause holds the world.
+	if GameRules.IsGamePaused and not GameRules:IsGamePaused() then return end
 	for playerID = 0, DOTA_MAX_PLAYERS - 1 do
 		if PlayerResource:IsValidPlayerID(playerID) then
 			local record = PlayerState.players and PlayerState.players[playerID]
@@ -610,13 +615,19 @@ function AILODGameMode:PrepareHeroes()
 	self.preparationDeadline = deadline
 	Timers:CreateTimer(function()
 		if self.ended then return end
-		if Time() >= deadline then
-			self:AbortPreparation()
-			return
-		end
+		-- One broken slot must not end the match: past the timeout, unprepared
+		-- participants fall back to a safe build instead of AbortPreparation.
+		local timedOut = Time() >= deadline
 		local complete = true
 		PlayerState:ForEachParticipant(function(playerID, record)
 			if record.prepared then return end
+			if timedOut then
+				local ok, prepared = pcall(self.FallbackPreparePlayer, self, playerID, record)
+				if ok and prepared then return end
+				if not ok then print("[AI-LOD] Fallback preparation failed: " .. tostring(prepared)) end
+				complete = false
+				return
+			end
 			local ok, prepared = pcall(self.PreparePlayer, self, playerID, record)
 			if not ok or not prepared then
 				complete = false
@@ -628,8 +639,74 @@ function AILODGameMode:PrepareHeroes()
 			GameState:Transition(GameState.STRATEGY)
 			return
 		end
+		if timedOut then
+			self:AbortPreparation()
+			return
+		end
 		return 1
 	end, false)
+end
+
+-- Timeout fallback for a participant whose drafted build could not be installed
+-- (precache/ReplaceHeroWith/engine failure). A random unlocked base plus a
+-- globally free kit is better than abandoning the match for everyone.
+function AILODGameMode:FallbackPreparePlayer(playerID, record)
+	print(string.format("[AI-LOD] Preparation timeout: forcing fallback hero for player %d", playerID))
+	-- Candidate order: the drafted hero first, then the player's category
+	-- offers, then any unlocked pool hero. A failed install releases the
+	-- selection so the next candidate can take the slot.
+	local candidates, seen = {}, {}
+	local function push(name)
+		if type(name) == "string" and name ~= "" and not seen[name]
+			and self.heroManager:IsValidHero(name) and not self.heroManager:IsBanned(name) then
+			seen[name] = true
+			table.insert(candidates, name)
+		end
+	end
+	push(record.hero)
+	for _, cat in ipairs(self.heroManager:GetCategories()) do
+		for _, hero in ipairs((record.heroPools or {})[cat] or {}) do push(hero) end
+	end
+	for _, hero in ipairs(self.heroManager:LoadPool()) do push(hero) end
+
+	local basics, ultimates = record.abilities.basic, record.abilities.ultimate
+	if #basics ~= 3 or #ultimates ~= 2
+		or not self.abilityManager:ValidateKit(record.hero, basics, ultimates, playerID) then
+		basics = self.abilityManager:Sample(self.abilityManager:GetPools().regular, 3, {})
+		ultimates = self.abilityManager:Sample(self.abilityManager:GetPools().ultimate, 2, {})
+		if #basics ~= 3 or #ultimates ~= 2 then return false end
+	end
+
+	for _, name in ipairs(candidates) do
+		local owner = self.heroManager.selected[name]
+		if owner == nil or owner == playerID then
+			self.heroManager.selected[name] = playerID
+			local hero = self.heroManager:EnsureHeroForPlayer(playerID, name)
+			if hero and not hero:IsNull() and hero:GetUnitName() == name
+				and self.abilityManager:CommitBuild(playerID, basics, ultimates)
+				and self.abilityManager:ApplyKit(hero, basics, ultimates) then
+				if record.hero ~= name then print(string.format(
+					"[AI-LOD] Fallback replaced unbuildable %s with %s for player %d",
+					tostring(record.hero), name, playerID)) end
+				record.hero = name
+				record.abilities.basic = basics
+				record.abilities.ultimate = ultimates
+				record.buildConfirmed = true
+				record.draftLocked = true
+				record.confirmedBuild = { hero = name, basic = basics, ultimate = ultimates }
+				self:HoldUnit(hero)
+				record.prepared = true
+				record.preparedHero = hero
+				record.startingGold = PlayerResource.GetGold and PlayerResource:GetGold(playerID) or 0
+				record.buildError = "preparation_fallback"
+				hero.bAILODReady = true
+				PlayerState:SetHero(playerID, name)
+				return true
+			end
+			if self.heroManager.selected[name] == playerID then self.heroManager.selected[name] = nil end
+		end
+	end
+	return false
 end
 
 function AILODGameMode:PreparePlayer(playerID, record)
@@ -780,6 +857,8 @@ function AILODGameMode:RunSpawnPhase()
 		return
 	end
 	-- Do not replace heroes or reapply kits here: strategy inventory must survive.
+	-- One-time sweep so a stuck draft pause can never carry into gameplay.
+	PauseGame(false)
 	self.spawnReady = true
 	PlayerState:ForEachParticipant(function(_, record) record.draftState = "GAME_START" end)
 	self.presentationDeadline = Time()

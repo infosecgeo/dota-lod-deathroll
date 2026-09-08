@@ -2,9 +2,11 @@
 
 DraftManager = DraftManager or class({})
 
-local HERO_DRAFT_TIME = 30
-local ABILITY_DRAFT_TIME = 30
-local ULTIMATE_DRAFT_TIME = 20
+-- Humans get a 1-minute choice window for base hero, skills and ultimates;
+-- timeouts still auto-complete so the match can never stall.
+local HERO_DRAFT_TIME = 60
+local ABILITY_DRAFT_TIME = 60
+local ULTIMATE_DRAFT_TIME = 60
 local BUILD_CONFIRMATION_TIME = 15
 local BASIC_SLOTS = 3
 local ABILITY_OFFER_BASICS = 12

@@ -7,9 +7,9 @@ Dota 2 Arcade custom game: modular LOD-style ability draft with death-draft, bui
 Flow:
 
 ```
-LOBBY → BAN_HEROES (50s) → GENERATE_HERO_POOLS → SELECT_BASE_HERO (30s, 3×4)
-      → ABILITY_DRAFT (30s, 3 basics) → INITIAL_ULTIMATE (20s)
-      → BONUS_ULTIMATE_DRAFT (20s) → BUILD_CONFIRMATION → ABILITY_VALIDATION
+LOBBY → BAN_HEROES (60s) → GENERATE_HERO_POOLS → SELECT_BASE_HERO (60s, 3×4)
+      → ABILITY_DRAFT (60s, 3 basics) → INITIAL_ULTIMATE (60s)
+      → BONUS_ULTIMATE_DRAFT (60s) → BUILD_CONFIRMATION → ABILITY_VALIDATION
       → STRATEGY_TIME (15s, buy items) → INTRODUCTION → GAME_START → GAME
       → per-player DEATH DRAFT (replace same-type slots or skip)
       → GAME_END → victory/defeat, MVP + runner-up, final scoreboard
@@ -56,7 +56,7 @@ tools/                         # Python balance / AI analyzer (offline)
 | `player_state.lua` | Per-player source of truth |
 | `hero_manager.lua` | Full pool / ban / random 3×4 offers / spawn |
 | `ability_manager.lua` | Ability DB + blacklist + kit application |
-| `ban_manager.lua` | 50s synchronized hero ban |
+| `ban_manager.lua` | 60s synchronized hero ban |
 | `draft_manager.lua` | Hero / basic / initial ultimate / bonus ultimate / build confirmation |
 | `bot_manager.lua` | Auto-assign unassigned players, fill empty 5v5 slots with hard AI bots, random names, instant draft picks |
 | `seeded_random.lua` | Reproducible server-owned draft random stream |
@@ -74,9 +74,9 @@ local SETUP_COUNTDOWN = 10     -- native team-select countdown → FinishCustomG
 local LOBBY_COUNTDOWN = 5      -- LOD lobby countdown → BAN_HEROES
 ```
 
-**Playable lobby path:** custom game setup auto-assigns unassigned humans/bots onto Radiant/Dire, fills remaining slots with hard AI bots, shows a 10s setup countdown, launches through a short native hero-selection window (forced placeholder `wisp` only — no real auto-picks; engine clocks stay unpaused so the match can reach PRE_GAME), then PRE_GAME runs the 5s LOD lobby countdown (auto-ready if the UI never reports ready) **before BAN_HEROES**. Bots only ban/pick after each LOD phase is live; they never lock a base hero before bans.
+**Playable lobby path:** custom game setup auto-assigns unassigned humans/bots onto Radiant/Dire, fills remaining slots with hard AI bots (deferred placeholder bodies — no hero entity spawns before PRE_GAME), shows a 10s setup countdown, launches through a short native hero-selection window (forced placeholder `wisp` only — no real auto-picks; engine clocks stay unpaused so the match can reach PRE_GAME), then PRE_GAME runs the 5s LOD lobby countdown (auto-ready if the UI never reports ready). When the lobby countdown ends, empty team slots are detected and re-filled with bots before the roster locks, then **BAN_HEROES** begins. Bots only ban/pick after each LOD phase is live; they never lock a base hero before bans.
 
-**Required engine files:** `scripts/custom_net_tables.txt` must use modern **KV3** list form (`custom_net_tables = [ "ai_lod_match" ]`). Old KV1 `"ai_lod_match" "1"` blocks are ignored by current Dota clients, which leaves the draft UI blank (`Unknown custom nettable 'ai_lod_match'`). After pulling updates, re-run `install.bat` / `install.sh` so Workshop Tools picks up the new file.
+**Required engine files:** `scripts/custom_net_tables.txt` must use modern **KV3** list form (`custom_net_tables = [ "ai_lod_match" ]`) and keep its **UTF-8 BOM** — without it the engine fails encoding detection, `ai_lod_match` never registers, and the draft UI stays blank (`Unknown custom nettable 'ai_lod_match'`). Old KV1 `"ai_lod_match" "1"` blocks are ignored by current Dota clients. After pulling updates, re-run `install.bat` / `install.sh` so Workshop Tools picks up the new file.
 
 ## Roadmap
 
@@ -142,10 +142,10 @@ Installer copies `game/` → `dota 2 beta/game/dota_addons/dota-lod-deathroll/`.
 2. Steam → Dota 2 → **Launch Dota 2 - Tools**
 3. Select **`dota-lod-deathroll`** → **Play**
 4. Draft flow:
-   - **Lobby**: join Radiant or Dire and ready up. Empty ally/enemy slots are filled with **hard AI bots** (random names). Bots auto-draft random heroes and skills so you can play solo or partial lobbies
-   - **Ban** one hero (50s)
-   - **Hero draft**: pick from your random 3×4 (reroll a category once)
-   - **Ability draft**: choose 3 basics, then choose 1 initial ultimate in its own phase
+   - **Lobby**: join Radiant or Dire and ready up. When the lobby countdown ends, empty ally/enemy slots are detected and filled with **hard AI bots** (random names). Bots auto-draft random heroes and skills so you can play solo or partial lobbies
+   - **Ban** one hero (60s)
+   - **Hero draft**: pick from your random 3×4 within 60s (reroll a category once)
+   - **Ability draft**: choose 3 basics within 60s, then choose 1 initial ultimate in its own 60s phase
    - **Bonus ultimate**: choose a second ultimate and **Confirm lock** (no rerolls)
    - **Final build**: inspect the hero and five abilities, then **Confirm build**
    - **Validation**: the server checks the build before permitting preparation
@@ -171,7 +171,7 @@ Installer copies `game/` → `dota 2 beta/game/dota_addons/dota-lod-deathroll/`.
 
 Strategy and introduction are **custom HUD phases in engine PRE_GAME**, not the native hero-selection screens shown in the reference. The server pauses the engine clock during readiness and drafting; their countdowns use real time. Once final heroes and kits exist, shopping is unpaused for up to **15 seconds**, followed by a **5-second** introduction. Combat and movement remain blocked until gameplay. The normal HUD shop and minimap remain available; starting items are purchased manually, not granted automatically.
 
-The lobby requires ready participants and both teams in normal games; Workshop Tools permits solo testing. The roster locks when drafting starts. Disconnected draft participants retain their records, draft timeouts complete their choices, and the UI requests a fresh snapshot on load. Hero preparation retries for up to **30 seconds**; an unrecoverable failure ends setup without awarding either team victory.
+The lobby requires ready participants and both teams in normal games; Workshop Tools permits solo testing. The roster locks when drafting starts. Disconnected draft participants retain their records, draft timeouts complete their choices, and the UI requests a fresh snapshot on load. Hero preparation retries for up to **30 seconds**; a slot that still cannot be prepared falls back to a random unlocked base hero with a valid kit so the match can start, and only a total failure ends setup without awarding either team victory.
 
 Death drafts last **up to 25 seconds or the remaining normal respawn time, whichever is shorter**, and respect gameplay pauses. They neither delay nor accelerate respawn. Buyback is blocked only while a death draft is pending; skipping closes it immediately.
 

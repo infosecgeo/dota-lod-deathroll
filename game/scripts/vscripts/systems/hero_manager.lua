@@ -251,6 +251,8 @@ function HeroManager:EnsureHeroForPlayer(playerID, preferredHero)
 
 	if hero and not hero:IsNull() then
 		if hero:GetUnitName() ~= heroName then
+			-- Placeholder → drafted base swap. Only legal while the preparation
+			-- pause holds the world; a live mid-frame replace freezes clients.
 			local gold = hero.GetGold and hero:GetGold() or 0
 			local replaced = PlayerResource:ReplaceHeroWith(playerID, heroName, gold, 0)
 			if replaced and not replaced:IsNull() then
