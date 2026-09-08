@@ -1,6 +1,10 @@
 "herolist"
 {
 	// Full Arcade pool — all heroes enabled; draft randomizes 3x4 offers per player.
+	// Io is enabled only as the temporary ForceHero placeholder during native
+	// selection. It is intentionally absent from hero_categories / heroes.kv so
+	// LOD draft never offers it as a base hero.
+	"npc_dota_hero_wisp"				"1"
 
 	// Strength
 	"npc_dota_hero_abaddon"				"1"
