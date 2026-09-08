@@ -58,18 +58,23 @@ tools/                         # Python balance / AI analyzer (offline)
 | `ability_manager.lua` | Ability DB + blacklist + kit application |
 | `ban_manager.lua` | 50s synchronized hero ban |
 | `draft_manager.lua` | Hero / basic / initial ultimate / bonus ultimate / build confirmation |
-| `bot_manager.lua` | Fill empty 5v5 slots with hard AI bots, random names, and instant random draft picks |
+| `bot_manager.lua` | Auto-assign unassigned players, fill empty 5v5 slots with hard AI bots, random names, instant draft picks |
 | `seeded_random.lua` | Reproducible server-owned draft random stream |
 | `reroll_manager.lua` | Category + death reroll budgets |
 | `respawn_manager.lua` | Transactional replace-or-skip death draft without changing normal respawn time |
 | `match_results.lua` | Immutable final scoreboard and deterministic MVP ranking |
 | `balance_manager.lua` | Power budget (reads `balance.kv`) |
 
-Feature flag in `gamemode.lua`:
+Feature flags / timers in `gamemode.lua`:
 
 ```lua
-local ENABLE_LOD_DRAFT = true  -- V1.0 full LOD pipeline
+local ENABLE_LOD_DRAFT = true   -- V1.0 full LOD pipeline
+local FILL_EMPTY_WITH_BOTS = true
+local SETUP_COUNTDOWN = 10     -- native team-select countdown → FinishCustomGameSetup
+local LOBBY_COUNTDOWN = 5      -- LOD lobby countdown → BAN_HEROES
 ```
+
+**Playable lobby path:** custom game setup auto-assigns unassigned humans/bots onto Radiant/Dire, fills remaining slots with hard AI bots, shows a 10s setup countdown, launches into PRE_GAME, then runs the 5s LOD lobby countdown (auto-ready if the UI never reports ready) before bans.
 
 ## Roadmap
 

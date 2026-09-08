@@ -113,6 +113,16 @@ GameRules = {
 	SetSafeToLeave = function() end,
 	SetGameWinner = function(self, winner) self.winner = winner end,
 	GetGameWinner = function(self) return self.winner end,
+	EnableCustomGameSetupAutoLaunch = function() end,
+	SetCustomGameSetupTimeout = function() end,
+	SetCustomGameSetupAutoLaunchDelay = function() end,
+	SetCustomGameSetupRemainingTime = function(_, seconds) GameRules.setupRemaining = seconds end,
+	LockCustomGameSetupTeamAssignment = function(_, locked) GameRules.setupLocked = locked end,
+	FinishCustomGameSetup = function()
+		GameRules.setupFinished = true
+		nativeState = DOTA_GAMERULES_STATE_PRE_GAME
+		if GameState.owner then GameState.owner:OnGameRulesStateChange() end
+	end,
 	AddBotPlayerWithEntityScript = function(_, _hero, name, team)
 		local id = nil
 		for candidate = 0, DOTA_MAX_PLAYERS - 1 do
@@ -120,8 +130,12 @@ GameRules = {
 		end
 		if id == nil then return -1 end
 		teams[id], connected[id], gold[id], fakeClients[id] = team, true, 600, true
-		players[id] = { id = id, name = name, events = {}, IsNull = function() return false end,
-			GetPlayerID = function() return id end }
+		players[id] = {
+			id = id, name = name, events = {},
+			IsNull = function() return false end,
+			GetPlayerID = function() return id end,
+			SetTeam = function(_, nextTeam) teams[id] = nextTeam end,
+		}
 		entities[1000 + id] = players[id]
 		return id
 	end,
@@ -196,8 +210,12 @@ local random = require("systems/seeded_random")
 local function addPlayer(id, team, bot)
 	teams[id], connected[id], gold[id] = team, true, 600
 	fakeClients[id] = bot == true
-	players[id] = { id = id, events = {}, IsNull = function() return false end,
-		GetPlayerID = function() return id end }
+	players[id] = {
+		id = id, events = {},
+		IsNull = function() return false end,
+		GetPlayerID = function() return id end,
+		SetTeam = function(_, nextTeam) teams[id] = nextTeam end,
+	}
 	entities[1000 + id] = players[id]
 end
 local function setup(count)
@@ -205,6 +223,7 @@ local function setup(count)
 	teams, connected, players, entities, heroes, gold, fakeClients = {}, {}, {}, {}, {}, {}, {}
 	events, netTables, handlers, precaches, assetCallbacks = {}, {}, {}, {}, {}
 	deferAssets, GameRules.winner, nextBotID = false, nil, 20
+	GameRules.setupRemaining, GameRules.setupLocked, GameRules.setupFinished = nil, nil, false
 	Timers.callbacks, Timers.nextID = {}, 0
 	for id = 0, count - 1 do addPlayer(id, id < 5 and 2 or 3) end
 	local owner = AILODGameMode()
@@ -278,8 +297,41 @@ PlayerState:ForEachParticipant(function(id, record)
 end)
 check(botSeen, "fake clients registered as bots")
 check(owner:LobbyCanStart(), "one human plus bot-filled teams can start")
-PlayerState:LockRoster()
-GameState:Transition(GameState.BAN)
+
+-- Unassigned humans/bots are pulled onto balanced playable teams before fill.
+owner = setup(0)
+owner.fillEmptyWithBots = true
+addPlayer(0, 0) -- unassigned human host
+addPlayer(1, 0, true) -- unassigned bot stuck in team-select column
+fakeClients[0] = false
+check(owner.botManager:FillEmptySlots(), "fill after auto-assign")
+check(PlayerResource:GetTeam(0) == DOTA_TEAM_GOODGUYS or PlayerResource:GetTeam(0) == DOTA_TEAM_BADGUYS,
+	"unassigned human auto-assigned")
+check(PlayerResource:GetTeam(1) == DOTA_TEAM_GOODGUYS or PlayerResource:GetTeam(1) == DOTA_TEAM_BADGUYS,
+	"unassigned bot auto-assigned")
+check(owner.botManager:TeamCount(DOTA_TEAM_GOODGUYS) == 5, "radiant full after reclaim")
+check(owner.botManager:TeamCount(DOTA_TEAM_BADGUYS) == 5, "dire full after reclaim")
+
+-- Native team-select countdown finishes setup then starts LOD lobby countdown.
+owner = setup(1)
+owner.fillEmptyWithBots = true
+fakeClients[0] = false
+PlayerState:Get(0).clientReady, PlayerState:Get(0).lobbyReady = false, false
+nativeState = DOTA_GAMERULES_STATE_CUSTOM_GAME_SETUP
+owner:OnGameRulesStateChange()
+check(owner.setupStarted, "custom game setup loop armed")
+advance(1)
+check(owner.botManager:TeamsFull(), "setup loop fills empty slots")
+check(type(GameRules.setupRemaining) == "number" and GameRules.setupRemaining <= 10, "setup countdown published")
+advance(10)
+check(GameRules.setupFinished == true, "setup countdown finishes custom game setup")
+check(nativeState == DOTA_GAMERULES_STATE_PRE_GAME, "engine advanced to pre-game")
+check(owner.flowStarted, "LOD lobby flow starts after setup")
+advance(8)
+check(PlayerState:Get(0).lobbyReady == true and PlayerState:Get(0).clientReady == true,
+	"lobby auto-ready without UI after grace")
+advance(5)
+phase(GameState.BAN, "lobby countdown starts the ban phase")
 owner.botManager:AutoBan(owner.banManager)
 PlayerState:ForEachParticipant(function(id, record)
 	if PlayerState:IsBot(id) then check(#record.bannedHeroes > 0, "bots ban immediately") end
