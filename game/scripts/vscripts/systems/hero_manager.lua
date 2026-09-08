@@ -2,6 +2,7 @@
 -- Full hero pool, bans, randomized 3x4 category offers, spawn helpers.
 
 HeroManager = HeroManager or class({})
+local DraftRandom = require("systems/seeded_random")
 
 local CATEGORIES = { "Strength", "Agility", "Intelligence" }
 local OFFERS_PER_CATEGORY = 4
@@ -11,6 +12,7 @@ function HeroManager:constructor()
 	self.pool = {}
 	self.categories = {}
 	self.banned = {}
+	self.selected = {}
 	self.loaded = false
 end
 
@@ -23,6 +25,8 @@ function HeroManager:LoadPool()
 		return self.pool
 	end
 
+	local engine = LoadKeyValues("scripts/npc/herolist.txt")
+	self.engineHeroes = (engine and (engine.herolist or engine.HeroList or engine)) or {}
 	local kv = LoadKeyValues("scripts/config/heroes.kv")
 	if not kv then
 		kv = LoadKeyValues("scripts/npc/hero_categories.txt")
@@ -43,6 +47,7 @@ function HeroManager:LoadPool()
 		if not (enabled == 1 or enabled == "1") then return end
 		if type(name) ~= "string" or name == "" then return end
 		if name:sub(1, #HERO_PREFIX) ~= HERO_PREFIX then return end
+		if self.engineHeroes[name] ~= 1 and self.engineHeroes[name] ~= "1" then return end
 		table.insert(pool, name)
 		if category and categories[category] then
 			table.insert(categories[category], name)
@@ -117,46 +122,43 @@ end
 function HeroManager:GetAvailableInCategory(category)
 	local out = {}
 	for _, h in ipairs(self:GetCategoryHeroes(category)) do
-		if not self:IsBanned(h) then
+		if self:IsAvailable(h) then
 			table.insert(out, h)
 		end
 	end
 	return out
 end
 
-function HeroManager:SampleCategory(category, count, excludeSet)
-	local available = self:GetAvailableInCategory(category)
+function HeroManager:SampleCategory(category, count, excludeSet, hardExclude)
+	self:LoadPool()
+	count = count or OFFERS_PER_CATEGORY
 	excludeSet = excludeSet or {}
-	local filtered = {}
-	for _, h in ipairs(available) do
-		if not excludeSet[h] then
-			table.insert(filtered, h)
+	hardExclude = hardExclude or {}
+	local offers, seen = {}, {}
+	local function fill(source, previous)
+		if #offers >= count then return end
+		local candidates = {}
+		for _, name in ipairs(source) do
+			if not seen[name] and not hardExclude[name] and self:IsAvailable(name)
+				and (excludeSet[name] == true) == previous then
+				table.insert(candidates, name)
+			end
+		end
+		table.sort(candidates)
+		for i = #candidates, 2, -1 do
+			local j = DraftRandom:Int(1, i)
+			candidates[i], candidates[j] = candidates[j], candidates[i]
+		end
+		for _, name in ipairs(candidates) do
+			if #offers >= count then break end
+			seen[name] = true
+			table.insert(offers, name)
 		end
 	end
-	-- Prefer new heroes, but retain a full offer in small categories.
-	if #filtered < (count or OFFERS_PER_CATEGORY) then
-		local previous = {}
-		for _, h in ipairs(available) do
-			if excludeSet[h] then table.insert(previous, h) end
-		end
-		for i = #previous, 2, -1 do
-			local j = RandomInt(1, i)
-			previous[i], previous[j] = previous[j], previous[i]
-		end
-		for _, h in ipairs(previous) do
-			if #filtered >= (count or OFFERS_PER_CATEGORY) then break end
-			table.insert(filtered, h)
-		end
-	end
-	for i = #filtered, 2, -1 do
-		local j = RandomInt(1, i)
-		filtered[i], filtered[j] = filtered[j], filtered[i]
-	end
-	local n = math.min(count or OFFERS_PER_CATEGORY, #filtered)
-	local offers = {}
-	for i = 1, n do
-		table.insert(offers, filtered[i])
-	end
+	fill(self:GetCategoryHeroes(category), false)
+	fill(self.pool, false)
+	fill(self:GetCategoryHeroes(category), true)
+	fill(self.pool, true)
 	return offers
 end
 
@@ -167,8 +169,10 @@ function HeroManager:BuildPlayerOffers(excludeHeroes)
 	if excludeHeroes then
 		for _, h in ipairs(excludeHeroes) do exclude[h] = true end
 	end
+	local hardExclude = {}
 	for _, cat in ipairs(CATEGORIES) do
-		offers[cat] = self:SampleCategory(cat, OFFERS_PER_CATEGORY, exclude)
+		offers[cat] = self:SampleCategory(cat, OFFERS_PER_CATEGORY, exclude, hardExclude)
+		for _, name in ipairs(offers[cat]) do hardExclude[name] = true end
 	end
 	return offers
 end
@@ -184,6 +188,21 @@ function HeroManager:IsBanned(heroName)
 	return self.banned[heroName] == true
 end
 
+function HeroManager:IsAvailable(heroName)
+	return self:IsValidHero(heroName) and not self:IsBanned(heroName)
+		and self.selected[heroName] == nil
+end
+
+function HeroManager:TrySelect(heroName, playerID)
+	if type(playerID) ~= "number" or playerID < 0 or playerID == math.huge or playerID ~= math.floor(playerID)
+		or not self:IsAvailable(heroName) then return false end
+	for _, owner in pairs(self.selected) do
+		if owner == playerID then return false end
+	end
+	self.selected[heroName] = playerID
+	return true
+end
+
 function HeroManager:Ban(heroName, playerID)
 	if not heroName or heroName == "" then
 		return false, "empty"
@@ -194,6 +213,7 @@ function HeroManager:Ban(heroName, playerID)
 	if not self:IsValidHero(heroName) then
 		return false, "invalid"
 	end
+	if self.selected[heroName] ~= nil then return false, "already_selected" end
 	self.banned[heroName] = true
 	print(string.format("[HeroManager] Banned %s by player %s", heroName, tostring(playerID)))
 	return true
@@ -211,22 +231,26 @@ end
 function HeroManager:GetDefaultHero()
 	local pool = self:LoadPool()
 	for _, h in ipairs(pool) do
-		if not self:IsBanned(h) then
+		if self:IsAvailable(h) then
 			return h
 		end
 	end
-	return pool[1] or "npc_dota_hero_axe"
+	return nil
 end
 
 function HeroManager:EnsureHeroForPlayer(playerID, preferredHero)
-	local heroName = preferredHero or self:GetDefaultHero()
-	if self:IsBanned(heroName) then
-		heroName = self:GetDefaultHero()
+	local heroName = preferredHero
+	if not heroName then
+		for name, owner in pairs(self.selected) do
+			if owner == playerID then heroName = name break end
+		end
 	end
+	if not heroName or self.selected[heroName] ~= playerID
+		or not self:IsValidHero(heroName) or self:IsBanned(heroName) then return nil, heroName end
 	local hero = PlayerResource:GetSelectedHeroEntity(playerID)
 
 	if hero and not hero:IsNull() then
-		if preferredHero and hero:GetUnitName() ~= heroName then
+		if hero:GetUnitName() ~= heroName then
 			local gold = hero.GetGold and hero:GetGold() or 0
 			local replaced = PlayerResource:ReplaceHeroWith(playerID, heroName, gold, 0)
 			if replaced and not replaced:IsNull() then

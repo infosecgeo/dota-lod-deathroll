@@ -1,4 +1,4 @@
--- Per-death transactional draft. The normal respawn deadline is never shortened.
+-- Per-death transactional draft. Choices never change the normal respawn deadline.
 RespawnManager = RespawnManager or class({})
 
 local DEATH_DRAFT_TIME = 25
@@ -61,20 +61,21 @@ function RespawnManager:StartDeathDraft(playerID, hero)
 	if not record or not record.abilities or #record.abilities.basic ~= 3
 		or #record.abilities.ultimate ~= 2 then return false end
 	local now = GameRules:GetGameTime()
+	local remaining = math.max(0, hero:GetTimeUntilRespawn())
+	if remaining <= 0 then return false end
 	local s = {
+		playerID = playerID,
 		draftId = self:NextDraftId(),
 		slots = { basic = Copy(record.abilities.basic), ultimate = Copy(record.abilities.ultimate) },
 		candidate = { basic = Copy(record.abilities.basic), ultimate = Copy(record.abilities.ultimate) },
 		offers = { basic = {}, ultimate = {} },
 		hero = hero,
-		expiresAt = now + DEATH_DRAFT_TIME,
-		respawnAt = now + math.max(0, hero:GetTimeUntilRespawn()),
+		expiresAt = now + math.min(DEATH_DRAFT_TIME, remaining),
 	}
 	self.pending[playerID] = s
 	record.respawnPending = true
 	record.draftState = "RESPAWN_DRAFT"
 	PlayerState:ResetRespawnRerolls(playerID)
-	hero:SetTimeUntilRespawn(math.max(s.respawnAt - now, DEATH_DRAFT_TIME + 1))
 	self:RollOffers(s)
 	self:SendDeathDraft(playerID)
 	s.timer = Timers:CreateTimer(function()
@@ -89,9 +90,6 @@ function RespawnManager:StartDeathDraft(playerID, hero)
 			self:FinishDeathDraft(playerID, true, false)
 			return nil
 		end
-		-- Guard against another script shortening the held respawn timer.
-		s.hero:SetTimeUntilRespawn(math.max(s.hero:GetTimeUntilRespawn(), remaining + 1,
-			s.respawnAt - GameRules:GetGameTime()))
 		self:SendDeathDraft(playerID)
 		return math.min(1, remaining)
 	end)
@@ -101,9 +99,18 @@ end
 function RespawnManager:RollOffers(s)
 	for _, kind in ipairs({ "basic", "ultimate" }) do
 		local source = self.abilityManager:GetDeathPool(kind, s.hero, s.slots.basic, s.slots.ultimate)
+		local available = {}
+		for _, name in ipairs(source) do
+			if self.abilityManager:IsAvailable(name, s.playerID) then
+				table.insert(available, name)
+			end
+		end
 		local exclude = {}
 		for _, name in ipairs(s.offers[kind]) do exclude[name] = true end
-		s.offers[kind] = self.abilityManager:Sample(source, DEATH_OFFER_COUNT, exclude)
+		s.offers[kind] = self.abilityManager:Sample(available, DEATH_OFFER_COUNT, exclude)
+		if #s.offers[kind] == 0 then
+			s.offers[kind] = self.abilityManager:Sample(available, DEATH_OFFER_COUNT, {})
+		end
 	end
 end
 
@@ -179,6 +186,11 @@ function RespawnManager:HandleDeathSelectAbility(playerID, abilityName, draftId)
 		if name == s.selectedSlot then index = i break end
 	end
 	if not index then return end
+	if not self.abilityManager:IsAvailable(abilityName, playerID) then
+		s.error = "ability_taken"
+		self:SendDeathDraft(playerID)
+		return
+	end
 	for _, kind in ipairs({ "basic", "ultimate" }) do
 		for i, name in ipairs(s.candidate[kind]) do
 			if name == abilityName and (kind ~= s.selectedKind or i ~= index) then return end
@@ -211,6 +223,13 @@ function RespawnManager:HandleDeathConfirm(playerID, draftId)
 	if self:GetSession(playerID, draftId) then self:FinishDeathDraft(playerID, false, false) end
 end
 
+function RespawnManager:HandleDeathSkip(playerID, draftId)
+	local s = self:GetSession(playerID, draftId)
+	if not s then return end
+	s.skipped = true
+	self:FinishDeathDraft(playerID, false, true)
+end
+
 function RespawnManager:FinishDeathDraft(playerID, timedOut, cancelled)
 	local s = self.pending[playerID]
 	if not s then return false end
@@ -225,6 +244,11 @@ function RespawnManager:FinishDeathDraft(playerID, timedOut, cancelled)
 			for i, name in ipairs(s.slots[kind]) do
 				local newName = s.candidate[kind][i]
 				if newName ~= name then
+					if not self.abilityManager:IsAvailable(newName, playerID) then
+						s.error = "ability_taken"
+						self:SendDeathDraft(playerID)
+						return false
+					end
 					if not Contains(s.offers[kind], newName) then
 						s.error = "stale_offer"
 						self:SendDeathDraft(playerID)
@@ -235,32 +259,32 @@ function RespawnManager:FinishDeathDraft(playerID, timedOut, cancelled)
 				end
 			end
 		end
-		local ok, reason = self.abilityManager:ApplyDraftChanges(s.hero, s.slots.basic, s.slots.ultimate,
-			s.candidate.basic, s.candidate.ultimate)
-		if not ok then
-			s.error = reason or "invalid_kit"
-			self:SendDeathDraft(playerID)
-			return false
+		if #gained > 0 then
+			local ok, reason = self.abilityManager:ApplyDraftChanges(s.hero, s.slots.basic, s.slots.ultimate,
+				s.candidate.basic, s.candidate.ultimate)
+			if not ok then
+				s.error = reason or "invalid_kit"
+				self:SendDeathDraft(playerID)
+				return false
+			end
+			self.abilityManager:CommitBuild(playerID, s.candidate.basic, s.candidate.ultimate)
 		end
 		record.abilities = { basic = Copy(s.candidate.basic), ultimate = Copy(s.candidate.ultimate) }
 	end
 	self.pending[playerID] = nil
 	if s.timer then Timers:RemoveTimer(s.timer) end
 	record.respawnPending = false
-	record.draftState = Playing() and "PLAYING" or "FINISHED"
+	record.draftState = Playing() and "GAME" or "FINISHED"
 	local player = PlayerResource:GetPlayer(playerID)
 	if player then
 		CustomGameEventManager:Send_ServerToPlayer(player, "ai_lod_death_end", {
 			draft_id = s.draftId,
 			timed_out = timedOut == true,
 			cancelled = cancelled == true,
+			skipped = s.skipped == true,
 			replaced = table.concat(replaced, ","),
 			gained = table.concat(gained, ","),
 		})
-	end
-	-- Releasing our hold is not a respawn discount, even on immediate confirmation.
-	if not s.hero:IsNull() and not s.hero:IsAlive() then
-		s.hero:SetTimeUntilRespawn(math.max(0, s.respawnAt - GameRules:GetGameTime()))
 	end
 	return true
 end

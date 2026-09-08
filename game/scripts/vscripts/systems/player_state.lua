@@ -19,13 +19,15 @@ local function NewPlayerRecord(playerID)
 			heroCategory3 = 1,
 			respawn = 3,
 		},
-		draftState = "WAITING",
+		draftState = "LOBBY",
 		deathCount = 0,
 		ultimateConfirmed = false,
 		draftLocked = false,
 		draftId = 0,
 		respawnPending = false,
 		clientReady = false,
+		lobbyReady = false,
+		buildConfirmed = false,
 		strategyReady = false,
 		prepared = false,
 	}
@@ -33,6 +35,7 @@ end
 
 function PlayerState:Init()
 	self.players = {}
+	self.roster = nil
 	print("[PlayerState] Initialized")
 end
 
@@ -83,12 +86,27 @@ function PlayerState:ForEachConnected(fn)
 end
 
 function PlayerState:IsParticipant(playerID)
-	if type(playerID) ~= "number" or playerID % 1 ~= 0
-		or not PlayerResource:IsValidPlayerID(playerID) then
+	if type(playerID) ~= "number" or playerID % 1 ~= 0 or playerID < 0 or playerID >= DOTA_MAX_PLAYERS then
 		return false
 	end
+	if self.roster then return self.roster[playerID] ~= nil end
+	if not PlayerResource:IsValidPlayerID(playerID) then return false end
 	local team = PlayerResource:GetTeam(playerID)
 	return team == DOTA_TEAM_GOODGUYS or team == DOTA_TEAM_BADGUYS
+end
+
+function PlayerState:LockRoster()
+	if self.roster then return end
+	local roster = {}
+	self:ForEachParticipant(function(playerID, record)
+		record.team = PlayerResource:GetTeam(playerID)
+		roster[playerID] = record.team
+	end)
+	self.roster = roster
+end
+
+function PlayerState:GetTeam(playerID)
+	return self.roster and self.roster[playerID] or PlayerResource:GetTeam(playerID)
 end
 
 function PlayerState:IsConnected(playerID)

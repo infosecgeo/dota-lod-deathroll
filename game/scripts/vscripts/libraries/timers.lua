@@ -32,9 +32,12 @@ function Timers:Think()
 	local realNow = Time()
 	local pending = {}
 	for id, timer in pairs(self.timers) do
-		pending[id] = timer
+		table.insert(pending, { id = id, timer = timer })
 	end
-	for id, t in pairs(pending) do
+	-- Stable callback order also makes seeded drafts reproducible across players.
+	table.sort(pending, function(a, b) return a.id < b.id end)
+	for _, entry in ipairs(pending) do
+		local id, t = entry.id, entry.timer
 		local clock = t.useGameTime and now or realNow
 		if self.timers[id] == t
 			and (not t.useGameTime or not GameRules:IsGamePaused()) and t.endTime <= clock then

@@ -1,307 +1,102 @@
-.DraftRoot
-{
-	width: 100%;
-	height: 100%;
-}
-
-.PhasePanel
-{
-	width: 900px;
-	max-height: 90%;
-	horizontal-align: center;
-	vertical-align: center;
-	flow-children: down;
-	visibility: collapse;
-	overflow: squish scroll;
-	background-color: #0d0d0dee;
-	padding: 20px;
-	border: 2px solid #5a4a2a;
-	border-radius: 6px;
-}
-
-.PhasePanel.Visible
-{
-	visibility: visible;
-}
-
-.PhaseTitle
-{
-	font-size: 32px;
-	color: white;
-	horizontal-align: center;
-	margin-bottom: 8px;
-	font-weight: bold;
-}
-
-.PhaseHint
-{
-	font-size: 16px;
-	color: #bbb;
-	horizontal-align: center;
-	margin-bottom: 10px;
-}
-
-.SectionTitle
-{
-	font-size: 18px;
-	color: #ddc;
-	horizontal-align: center;
-	margin-top: 8px;
-	margin-bottom: 4px;
-}
-
-.Timer
-{
-	font-size: 24px;
-	color: #ffd700;
-	horizontal-align: center;
-	margin-bottom: 8px;
-}
-
-.AbilityGrid
-{
-	flow-children: right-wrap;
-	max-height: 280px;
-	width: 100%;
-	horizontal-align: center;
-	overflow: squish scroll;
-}
-
-.AbilityGrid Button
-{
-	margin: 4px;
-	padding: 6px 12px;
-	background-color: #2a2a35;
-	border: 1px solid #666;
-	border-radius: 3px;
-}
-
-.AbilityGrid Button Label
-{
-	color: #eee;
-	font-size: 14px;
-}
-
-.AbilityGrid Button:hover
-{
-	background-color: #3d3d55;
-	border-color: #aaa;
-}
-
-.AbilityGrid Button.Banned
-{
-	background-color: #511;
-	border-color: #a33;
-	opacity: 0.55;
-}
-
-.HeroCategories
-{
-	flow-children: right;
-	horizontal-align: center;
-	width: 100%;
-}
-
-.HeroCategory
-{
-	flow-children: down;
-	margin: 8px;
-	padding: 12px;
-	background-color: #1a1a24;
-	border: 1px solid #555;
-	border-radius: 4px;
-	width: fill-parent-flow(1);
-	min-width: 200px;
-}
-
-.HeroCategory Label.CategoryName
-{
-	color: #f0c060;
-	font-size: 18px;
-	margin-bottom: 8px;
-	horizontal-align: center;
-	font-weight: bold;
-}
-
-.HeroCategory Button
-{
-	margin-top: 6px;
-	padding: 8px 10px;
-	background-color: #2a2a35;
-	border: 1px solid #666;
-	border-radius: 3px;
-	width: 100%;
-}
-
-.HeroCategory Button Label
-{
-	color: #eee;
-	font-size: 15px;
-	horizontal-align: center;
-}
-
-.HeroCategory Button:hover
-{
-	background-color: #3d4a35;
-	border-color: #8c8;
-}
-
-.HeroCategory Button.Selected
-{
-	background-color: #2a5530;
-	border-color: #6d6;
-}
-
-.PickedPanel
-{
-	margin-top: 12px;
-	flow-children: down;
-	horizontal-align: center;
-}
-
-.PickedPanel Label
-{
-	color: #8f8;
-	font-size: 14px;
-}
-
-#RerollsLeft
-{
-	color: #ccc;
-	font-size: 14px;
-	horizontal-align: center;
-	margin-top: 10px;
-}
-
-.DeathrollNotice
-{
-	horizontal-align: center;
-	vertical-align: top;
-	margin-top: 120px;
-	flow-children: down;
-	visibility: collapse;
-	background-color: #200808ee;
-	padding: 16px 24px;
-	border: 1px solid #a33;
-}
-
-.DeathrollNotice.Visible
-{
-	visibility: visible;
-}
-
-.DeathrollTitle
-{
-	font-size: 28px;
-	color: #f44;
-	horizontal-align: center;
-}
-
-#DeathrollText
-{
-	font-size: 16px;
-	color: white;
-	horizontal-align: center;
-}
-
-.ConfirmButton
-{
-	margin-top: 12px;
-	padding: 10px 18px;
-	background-color: #2a5530;
-	border: 1px solid #6d6;
-	border-radius: 4px;
-	horizontal-align: center;
-}
-
-.ConfirmButton Label
-{
-	color: #efe;
-	font-size: 16px;
-	horizontal-align: center;
-}
-
-.ConfirmButton:hover
-{
-	background-color: #3a7540;
-}
-
-.RerollButton
-{
-	margin-top: 10px;
-	padding: 6px 8px;
-	background-color: #3a3420;
-	border: 1px solid #a80;
-	border-radius: 3px;
-	width: 100%;
-}
-
-.RerollButton Label
-{
-	color: #fc8;
-	font-size: 13px;
-	horizontal-align: center;
-}
-
-.DeathActions
-{
-	flow-children: right;
-	horizontal-align: center;
-	margin-top: 8px;
-}
-
-.DeathActions .ConfirmButton
-{
-	margin-left: 8px;
-	margin-right: 8px;
-}
-
-.HeroCategory Button.Selected,
-.AbilityGrid Button.Selected
-{
-	background-color: #2a5530;
-	border-color: #6d6;
-}
-
-Button:disabled
-{
-	opacity: 0.45;
-}
-
-.PreparationPanel
-{
-	width: 540px;
-	horizontal-align: left;
-	vertical-align: top;
-	margin-top: 80px;
-	margin-left: 20px;
-}
-
-.Scoreboard
-{
-	width: 100%;
-	flow-children: down;
-	overflow: squish scroll;
-	max-height: 520px;
-}
-
-.ScoreRow
-{
-	width: 100%;
-	flow-children: right;
-	padding: 8px;
-	background-color: #22222c;
-	margin-bottom: 2px;
-}
-
-.ScoreRow Label
-{
-	width: fill-parent-flow(1);
-	color: #eee;
-	font-size: 16px;
-}
-
-.ScoreRow .PlayerColumn
-{
-	width: 270px;
-}
+.DraftRoot { width: 100%; height: 100%; }
+.DraftBackdrop { width: 100%; height: 100%; visibility: collapse; background-color: gradient(linear, 0% 0%, 100% 100%, from(#172b3b), color-stop(0.45, #0a121c), to(#04080f)); }
+.DraftBackdrop.Visible, .DraftHeader.Visible, .TeamRoster.Visible, .ChosenBuild.Visible, .PhasePanel.Visible, .DeathrollNotice.Visible { visibility: visible; }
+Label { color: #c5d1dc; font-size: 17px; font-family: Radiance; }
+.DraftHeader { visibility: collapse; width: 100%; height: 86px; padding: 16px 38px; background-color: #080e16ed; border-bottom: 1px solid #92744766; }
+.Brand { font-size: 31px; letter-spacing: 5px; color: #d7bb7d; }
+.Progression { horizontal-align: right; vertical-align: center; color: #a2b7ca; font-size: 17px; letter-spacing: 2px; }
+.PhasePanel { width: 1100px; max-height: 800px; horizontal-align: center; vertical-align: center; flow-children: down; visibility: collapse; padding: 22px 28px; background-color: #0b1521f5; border: 1px solid #40566a; box-shadow: #000000bb 0px 6px 30px 0px; overflow: squish scroll; }
+.PhaseTitle { font-size: 29px; color: #eee3c9; horizontal-align: center; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 5px; }
+.PhaseHint { font-size: 16px; color: #91a7ba; horizontal-align: center; text-align: center; margin: 5px 0px 10px; }
+.SectionTitle { font-size: 17px; color: #c8af79; letter-spacing: 1px; horizontal-align: center; margin: 8px 0px; }
+.Timer { font-size: 50px; color: #f1d698; horizontal-align: center; text-shadow: 0px 2px 8px #000000; }
+.GoldButton, .SmallButton, .RerollButton { flow-children: right; horizontal-align: center; padding: 9px 20px; margin: 8px 4px; background-color: gradient(linear, 0% 0%, 0% 100%, from(#655135), to(#332b20)); border: 1px solid #b89a5f; }
+.GoldButton Label, .SmallButton Label, .RerollButton Label { color: #f0d8a5; font-size: 16px; horizontal-align: center; text-align: center; }
+Button:hover { brightness: 1.4; }
+Button:disabled { saturation: 0.45; opacity: 0.48; }
+Button.Selected { border-color: #ebc777; box-shadow: #dca94944 0px 0px 8px 0px; background-color: #463d29; }
+Button.Selected:disabled { opacity: 1; saturation: 1; }
+.HeroCategories, .TeamColumns { flow-children: right; width: 100%; }
+.HeroCategory { flow-children: down; width: fill-parent-flow(1); margin: 0px 7px; }
+.CategoryName { horizontal-align: center; letter-spacing: 3px; color: #d9c18e; margin: 6px 0px 12px; }
+.HeroCard { width: 100%; height: 108px; flow-children: right; margin-bottom: 8px; padding: 5px; background-color: #162637; border: 1px solid #3b5266; }
+.HeroPortrait { width: 112px; height: 66px; vertical-align: center; }
+.HeroDetails { flow-children: down; width: fill-parent-flow(1); vertical-align: center; margin-left: 8px; }
+.HeroName { font-size: 17px; color: #e2e7eb; height: 25px; }
+.HeroAbilities { flow-children: right; width: 100%; height: 36px; }
+.HeroAbilities DOTAAbilityImage { width: 31px; height: 31px; margin-right: 2px; }
+.RerollQuestion { flow-children: right; horizontal-align: center; }
+.RerollQuestion .SmallButton { padding: 6px 22px; }
+.AbilityGrid { flow-children: right-wrap; width: 100%; max-height: 385px; overflow: squish scroll; horizontal-align: center; }
+.AbilityCard { flow-children: down; width: 154px; min-height: 116px; margin: 5px; padding: 8px; background-color: #192a3a; border: 1px solid #3c546a; }
+.AbilityIcon { width: 64px; height: 64px; horizontal-align: center; }
+.AbilityName { width: 100%; height: 34px; font-size: 14px; color: #d5e0e9; text-align: center; margin-top: 5px; text-overflow: shrink; }
+.UltimatePanel { width: 1130px; }
+.UltimateChoices { horizontal-align: center; }
+.UltimateChoices .AbilityCard { width: 164px; min-height: 200px; padding-top: 26px; background-color: gradient(linear, 0% 0%, 0% 100%, from(#273744), to(#111c29)); border-color: #8a754e; }
+.UltimateChoices .AbilityIcon { width: 96px; height: 96px; }
+.UltimateChoices .AbilityName { font-size: 17px; height: 52px; }
+.BuildStrip { flow-children: right; horizontal-align: center; }
+.BuildSlot { flow-children: down; width: 80px; height: 98px; margin: 3px; padding: 5px; border: 1px solid #4d6071; background-color: #101c29; }
+.BuildSlot .AbilityIcon { width: 56px; height: 56px; }
+.SlotCaption { font-size: 12px; horizontal-align: center; color: #aa9672; margin-top: 5px; }
+.EmptySlot { width: 56px; height: 56px; horizontal-align: center; border: 1px solid #314456; background-color: #060e17; }
+.BuildHero { width: 116px; height: 98px; flow-children: down; margin: 3px 12px 3px 3px; }
+.BuildHero .HeroPortrait { width: 112px; height: 64px; }
+.BuildHero Label { font-size: 14px; text-align: center; }
+.FinalBuild { margin: 28px 0px; }
+.FinalBuild .BuildSlot { width: 108px; height: 126px; }
+.FinalBuild .AbilityIcon { width: 80px; height: 80px; }
+.ChosenBuild { visibility: collapse; horizontal-align: center; vertical-align: bottom; margin-bottom: 16px; flow-children: down; background-color: #07111deb; border-top: 1px solid #8f754b; padding: 4px 22px; }
+.ChosenBuild .SectionTitle { margin: 2px; font-size: 14px; }
+.BannedStrip { flow-children: right; horizontal-align: center; height: 29px; }
+.BannedStrip DOTAHeroImage { width: 44px; height: 25px; saturation: 0; wash-color: #c36a68; margin: 2px; }
+.BanGrid { flow-children: right-wrap; width: 100%; height: 480px; overflow: squish scroll; }
+.BanCard { width: 110px; height: 91px; flow-children: down; margin: 2px; border: 1px solid #304b61; background-color: #142334; }
+.BanCard .HeroPortrait { width: 106px; height: 60px; }
+.BanCard Label { font-size: 13px; text-align: center; width: 100%; }
+.Banned { saturation: 0; wash-color: #bc6262; opacity: 0.4; }
+.TeamRoster { visibility: collapse; width: 220px; vertical-align: center; flow-children: down; padding: 10px; background-color: #08131de8; border-top: 2px solid #6b9d89; }
+.Radiant { horizontal-align: left; margin-left: 20px; }
+.Dire { horizontal-align: right; margin-right: 20px; border-top-color: #b16e65; }
+.RosterRow { flow-children: right; width: 100%; height: 72px; margin-bottom: 4px; background-color: #182737bb; padding: 4px; }
+.RosterRow .HeroPortrait { width: 66px; height: 42px; }
+.RosterDetails { flow-children: down; width: fill-parent-flow(1); margin-left: 6px; vertical-align: center; }
+.RosterName { width: 100%; font-size: 15px; color: #dde4e9; height: 21px; text-overflow: shrink; }
+.RosterStatus { width: 100%; font-size: 12px; color: #91aaab; text-overflow: shrink; }
+.LocalPlayer { border: 1px solid #b59a61; }
+.LobbyTeam { width: fill-parent-flow(1); flow-children: down; margin: 0px 20px; }
+.PlayerList { flow-children: down; width: 100%; }
+.LobbyTeam .RosterRow { height: 62px; }
+.PreparationPanel { width: 760px; max-height: 550px; vertical-align: top; margin-top: 95px; padding: 12px; }
+.PreparationPanel .PhaseTitle { font-size: 23px; }
+.PreparationPanel .Timer { font-size: 30px; }
+.PreparationPanel .BuildSlot { height: 80px; }
+.PreparationPanel .AbilityIcon { width: 44px; height: 44px; }
+.PreparationPanel .RosterRow { height: 42px; }
+.PreparationPanel .HeroPortrait { width: 50px; height: 30px; }
+.PreparationPanel.Introduction { width: 1060px; max-height: 800px; vertical-align: center; margin-top: 0px; }
+.Introduction .RosterRow { height: 88px; }
+.Introduction .HeroPortrait { width: 104px; height: 60px; }
+.Introduction .RosterName { font-size: 20px; height: 28px; }
+.DeathPanel { width: 510px; max-height: 640px; horizontal-align: left; vertical-align: bottom; margin-left: 18px; margin-bottom: 245px; padding: 12px; border-color: #8c7755; }
+.DeathHeading { flow-children: right; width: 100%; }
+.DeathPanel .PhaseTitle { font-size: 23px; vertical-align: center; }
+.DeathPanel .Timer { font-size: 32px; margin-left: 20px; }
+.DeathPanel .PhaseHint { font-size: 13px; margin: 3px 0px; }
+.DeathPanel .SectionTitle { font-size: 14px; margin: 4px 0px; }
+.DeathPanel .AbilityGrid { max-height: 116px; }
+.DeathPanel .AbilityCard { width: 86px; min-height: 80px; padding: 4px; margin: 3px; }
+.DeathPanel .AbilityIcon { width: 44px; height: 44px; }
+.DeathPanel .AbilityName { font-size: 11px; height: 26px; margin-top: 2px; }
+.Staged { border-color: #91c0ba; }
+.DeathActions { flow-children: right; horizontal-align: center; }
+.DeathActions .GoldButton, .DeathActions .SmallButton { margin: 5px; padding: 6px 16px; }
+.DeathActions Label { font-size: 14px; }
+.Error { color: #df9b89; font-size: 14px; horizontal-align: center; }
+.DeathrollNotice { visibility: collapse; horizontal-align: left; vertical-align: bottom; margin-left: 24px; margin-bottom: 245px; padding: 12px; max-width: 450px; background-color: #0c1d28ed; border: 1px solid #b09763; }
+.Scoreboard { width: 100%; flow-children: down; max-height: 530px; overflow: squish scroll; }
+.ScoreRow { width: 100%; flow-children: right; padding: 9px; background-color: #172a3b; margin-bottom: 3px; }
+.ScoreRow Label { width: fill-parent-flow(1); font-size: 17px; vertical-align: center; }
+.ScoreRow .PlayerColumn { width: 290px; }
+.ScorePortrait { width: 56px; height: 34px; margin-right: 8px; }

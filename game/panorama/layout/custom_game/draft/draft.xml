@@ -4,104 +4,108 @@
 		<include src="s2r://panorama/styles/dotastyles.vcss_c" />
 		<include src="file://{resources}/styles/custom_game/draft.css" />
 	</styles>
-	<scripts>
-		<include src="file://{resources}/scripts/custom_game/draft.js" />
-	</scripts>
+	<scripts><include src="file://{resources}/scripts/custom_game/draft.js" /></scripts>
 	<Panel class="DraftRoot" hittest="false">
-
+		<Panel id="DraftBackdrop" class="DraftBackdrop" hittest="false" />
+		<Panel id="DraftHeader" class="DraftHeader" hittest="false">
+			<Label text="#ai_lod_title" class="Brand" />
+			<Label id="Progression" class="Progression" />
+		</Panel>
+		<Panel id="RadiantRoster" class="TeamRoster Radiant" hittest="false" />
+		<Panel id="DireRoster" class="TeamRoster Dire" hittest="false" />
+		<Panel id="Lobby" class="PhasePanel" hittest="true">
+			<Label text="#ai_lod_lobby" class="PhaseTitle" />
+			<Label text="#ai_lod_mode" class="PhaseHint" />
+			<Label id="LobbyTimer" class="Timer" />
+			<Panel class="TeamColumns">
+				<Panel class="LobbyTeam"><Label text="#ai_lod_radiant" class="SectionTitle" /><Panel id="LobbyRadiant" class="PlayerList" /></Panel>
+				<Panel class="LobbyTeam"><Label text="#ai_lod_dire" class="SectionTitle" /><Panel id="LobbyDire" class="PlayerList" /></Panel>
+			</Panel>
+			<Label id="LobbyStatus" class="PhaseHint" />
+			<Button id="LobbyReadyBtn" class="GoldButton"><Label text="#ai_lod_ready" /></Button>
+		</Panel>
 		<Panel id="BanPhase" class="PhasePanel" hittest="true">
-			<Label text="#ai_lod_ban" class="PhaseTitle"/>
-			<Label id="BanTimer" class="Timer" text=""/>
-			<Label text="Ban 1 hero from the full pool (server-validated)" class="PhaseHint"/>
-			<Panel id="BanAbilityList" class="AbilityGrid"/>
+			<Label text="#ai_lod_ban" class="PhaseTitle" />
+			<Label id="BanTimer" class="Timer" />
+			<Label text="#ai_lod_ban_hint" class="PhaseHint" />
+			<Panel id="BanAbilityList" class="BanGrid" />
 		</Panel>
-
 		<Panel id="HeroSelect" class="PhasePanel" hittest="true">
-			<Label text="#ai_lod_hero_draft" class="PhaseTitle"/>
-			<Label id="HeroTimer" class="Timer" text=""/>
-			<Label text="Random 3x4 offers — pick 1 hero (1 reroll per category)" class="PhaseHint"/>
-			<Panel id="HeroCategories" class="HeroCategories"/>
-			<Label id="RerollsLeft" text=""/>
+			<Label text="#ai_lod_hero_draft" class="PhaseTitle" />
+			<Label id="HeroTimer" class="Timer" />
+			<Label text="#ai_lod_hero_hint" class="PhaseHint" />
+			<Panel id="HeroCategories" class="HeroCategories" />
+			<Label id="RerollsLeft" class="PhaseHint" />
 		</Panel>
-
 		<Panel id="AbilityDraft" class="PhasePanel" hittest="true">
-			<Label text="#ai_lod_ability_draft" class="PhaseTitle"/>
-			<Label id="DraftTimer" class="Timer" text=""/>
-			<Label text="Choose 3 basic skills, then 1 initial ultimate" class="PhaseHint"/>
-			<Label text="Regular abilities" class="SectionTitle"/>
-			<Panel id="DraftRegularList" class="AbilityGrid"/>
-			<Label text="Ultimates" class="SectionTitle"/>
-			<Panel id="DraftUltimateList" class="AbilityGrid"/>
-			<Panel id="DraftPicked" class="PickedPanel"/>
+			<Label text="#ai_lod_ability_draft" class="PhaseTitle" />
+			<Label id="DraftTimer" class="Timer" />
+			<Label text="#ai_lod_basic_hint" class="PhaseHint" />
+			<Panel id="DraftRegularList" class="AbilityGrid" />
+			<Panel id="DraftPicked" class="BuildStrip" />
 		</Panel>
-
-		<Panel id="UltDraft" class="PhasePanel" hittest="true">
-			<Label text="#ai_lod_ultimate_draft" class="PhaseTitle"/>
-			<Label id="UltTimer" class="Timer" text=""/>
-			<Label text="Choose a 2nd ultimate (6 options) then Confirm lock" class="PhaseHint"/>
-			<Panel id="UltChoiceList" class="AbilityGrid"/>
-			<Label id="UltSelected" text="" class="PhaseHint"/>
-			<Button id="UltConfirmBtn" class="ConfirmButton">
-				<Label text="Confirm Lock"/>
-			</Button>
-			<Button id="UltCloseBtn" class="ConfirmButton" enabled="false">
-				<Label text="Close after confirmation"/>
-			</Button>
+		<Panel id="InitialUltDraft" class="PhasePanel UltimatePanel" hittest="true">
+			<Label text="#ai_lod_initial_ultimate" class="PhaseTitle" />
+			<Label id="InitialUltTimer" class="Timer" />
+			<Label text="#ai_lod_initial_hint" class="PhaseHint" />
+			<Panel id="InitialUltChoices" class="AbilityGrid UltimateChoices" />
+			<Label id="InitialUltStatus" class="PhaseHint" />
 		</Panel>
-
+		<Panel id="UltDraft" class="PhasePanel UltimatePanel" hittest="true">
+			<Label text="#ai_lod_bonus_ultimate" class="PhaseTitle" />
+			<Label id="UltTimer" class="Timer" />
+			<Label id="UltCount" class="PhaseHint" />
+			<Panel id="UltChoiceList" class="AbilityGrid UltimateChoices" />
+			<Label id="UltSelected" class="PhaseHint" />
+			<Button id="UltConfirmBtn" class="GoldButton"><Label text="#ai_lod_lock" /></Button>
+		</Panel>
+		<Panel id="BuildConfirmation" class="PhasePanel" hittest="true">
+			<Label text="#ai_lod_build_confirmation" class="PhaseTitle" />
+			<Label id="BuildTimer" class="Timer" />
+			<Label text="#ai_lod_build_hint" class="PhaseHint" />
+			<Panel id="FinalBuild" class="BuildStrip FinalBuild" />
+			<Label id="BuildError" class="PhaseHint" />
+			<Button id="BuildConfirmBtn" class="GoldButton"><Label text="#ai_lod_confirm_build" /></Button>
+		</Panel>
 		<Panel id="Preparation" class="PhasePanel PreparationPanel" hittest="true">
-			<Label id="PreparationTitle" text="Strategy" class="PhaseTitle"/>
-			<Label id="PreparationTimer" class="Timer" text=""/>
-			<Label id="PreparationHint" text="" class="PhaseHint"/>
-			<Panel id="IntroductionPlayers" class="AbilityGrid"/>
-			<Button id="StrategyReadyBtn" class="ConfirmButton">
-				<Label text="Ready — finished shopping"/>
-			</Button>
+			<Label id="PreparationTitle" class="PhaseTitle" />
+			<Label id="PreparationTimer" class="Timer" />
+			<Label id="PreparationHint" class="PhaseHint" />
+			<Panel id="StrategyBuild" class="BuildStrip" />
+			<Panel id="IntroductionPlayers" class="TeamColumns" />
+			<Button id="StrategyReadyBtn" class="GoldButton"><Label text="#ai_lod_strategy_ready" /></Button>
 		</Panel>
-
-		<Panel id="DeathDraft" class="PhasePanel" hittest="true">
-			<Label text="#ai_lod_respawn_draft" class="PhaseTitle"/>
-			<Label id="DeathTimer" class="Timer" text=""/>
-			<Label text="Stage any number of same-type replacements, then confirm your 3 basics + 2 ultimates." class="PhaseHint"/>
-			<Label text="Basic slots" class="SectionTitle"/>
-			<Panel id="DeathBasicSlots" class="AbilityGrid"/>
-			<Label text="Ultimate slots" class="SectionTitle"/>
-			<Panel id="DeathUltimateSlots" class="AbilityGrid"/>
-			<Label id="DeathOfferTitle" text="Select a slot to see replacement offers" class="SectionTitle"/>
-			<Panel id="DeathBasicOffers" class="AbilityGrid"/>
-			<Panel id="DeathUltimateOffers" class="AbilityGrid"/>
-			<Label text="Rerolling clears staged changes. Timeout keeps your original loadout." class="PhaseHint"/>
-			<Label id="DeathDraftError" text="" class="PhaseHint"/>
-			<Label id="DeathRerolls" text="" class="PhaseHint"/>
-			<Panel class="DeathActions" hittest="true">
-				<Button id="DeathKeepSlotBtn" class="ConfirmButton" enabled="false">
-					<Label text="Keep original in selected slot"/>
-				</Button>
-				<Button id="DeathRerollBtn" class="ConfirmButton">
-					<Label id="DeathRerollLabel" text="Reroll both pools"/>
-				</Button>
-				<Button id="DeathConfirmBtn" class="ConfirmButton">
-					<Label text="Confirm loadout"/>
-				</Button>
+		<Panel id="ChosenBuild" class="ChosenBuild" hittest="true">
+			<Label text="#ai_lod_your_build" class="SectionTitle" />
+			<Panel id="ChosenBuildSlots" class="BuildStrip" />
+			<Panel id="BannedPortraits" class="BannedStrip" />
+		</Panel>
+		<Panel id="DeathDraft" class="PhasePanel DeathPanel" hittest="true">
+			<Panel class="DeathHeading"><Label text="#ai_lod_respawn_draft" class="PhaseTitle" /><Label id="DeathTimer" class="Timer" /></Panel>
+			<Label text="#ai_lod_death_hint" class="PhaseHint" />
+			<Label text="#ai_lod_basics" class="SectionTitle" /><Panel id="DeathBasicSlots" class="AbilityGrid" />
+			<Label text="#ai_lod_ultimates" class="SectionTitle" /><Panel id="DeathUltimateSlots" class="AbilityGrid" />
+			<Label id="DeathOfferTitle" class="SectionTitle" />
+			<Panel id="DeathBasicOffers" class="AbilityGrid" /><Panel id="DeathUltimateOffers" class="AbilityGrid" />
+			<Label id="DeathEmpty" text="#ai_lod_no_replacements" class="PhaseHint" />
+			<Label text="#ai_lod_death_timeout" class="PhaseHint" />
+			<Label id="DeathDraftError" class="Error" /><Label id="DeathRerolls" class="PhaseHint" />
+			<Panel class="DeathActions">
+				<Button id="DeathKeepSlotBtn" class="SmallButton"><Label text="#ai_lod_keep_slot" /></Button>
+				<Button id="DeathRerollBtn" class="SmallButton"><Label text="#ai_lod_reroll" /></Button>
+			</Panel>
+			<Panel class="DeathActions">
+				<Button id="DeathConfirmBtn" class="GoldButton"><Label text="#ai_lod_replace" /></Button>
+				<Button id="DeathSkipBtn" class="GoldButton"><Label text="#ai_lod_skip" /></Button>
 			</Panel>
 		</Panel>
-
 		<Panel id="MatchResults" class="PhasePanel" hittest="true">
-			<Label id="ResultTitle" text="Match complete" class="PhaseTitle"/>
-			<Label text="Gameplay ended — final results" class="PhaseHint"/>
-			<Label id="ResultMVP" text="" class="SectionTitle"/>
-			<Label id="ResultRunnerUp" text="" class="SectionTitle"/>
-			<Label text="MVP score = kills + assists - deaths; ties: hero damage, then player ID." class="PhaseHint"/>
-			<Panel id="ResultRows" class="Scoreboard"/>
-			<Button id="ResultsCloseBtn" class="ConfirmButton">
-				<Label text="Close — use Dota's post-game menu to return"/>
-			</Button>
+			<Label id="ResultTitle" text="#ai_lod_match_complete" class="PhaseTitle" />
+			<Label id="ResultMVP" class="SectionTitle" /><Label id="ResultRunnerUp" class="SectionTitle" />
+			<Label text="#ai_lod_score_hint" class="PhaseHint" />
+			<Panel id="ResultRows" class="Scoreboard" />
+			<Button id="ResultsCloseBtn" class="GoldButton"><Label text="#ai_lod_results_close" /></Button>
 		</Panel>
-
-		<Panel id="DeathrollNotice" class="DeathrollNotice">
-			<Label text="#lod_deathroll" class="DeathrollTitle"/>
-			<Label id="DeathrollText" text=""/>
-		</Panel>
-
+		<Panel id="DeathrollNotice" class="DeathrollNotice" hittest="false"><Label id="DeathrollText" /></Panel>
 	</Panel>
 </root>
