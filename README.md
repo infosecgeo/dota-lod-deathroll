@@ -71,10 +71,10 @@ Feature flags / timers in `gamemode.lua`:
 local ENABLE_LOD_DRAFT = true   -- V1.0 full LOD pipeline
 local FILL_EMPTY_WITH_BOTS = true
 local SETUP_COUNTDOWN = 10     -- native team-select countdown → FinishCustomGameSetup
-local LOBBY_COUNTDOWN = 5      -- LOD lobby countdown → BAN_HEROES
+local LOBBY_COUNTDOWN = 5      -- LOD lobby countdown → bot fill → BAN_HEROES
 ```
 
-**Playable lobby path:** custom game setup auto-assigns unassigned humans/bots onto Radiant/Dire, fills remaining slots with hard AI bots (deferred placeholder bodies — no hero entity spawns before PRE_GAME), shows a 10s setup countdown, launches through a short native hero-selection window (forced placeholder `wisp` only — no real auto-picks; engine clocks stay unpaused so the match can reach PRE_GAME), then PRE_GAME runs the 5s LOD lobby countdown (auto-ready if the UI never reports ready). When the lobby countdown ends, empty team slots are detected and re-filled with bots before the roster locks, then **BAN_HEROES** begins. Bots only ban/pick after each LOD phase is live; they never lock a base hero before bans.
+**Playable lobby path:** custom game setup auto-assigns unassigned humans onto Radiant/Dire and **detects** empty seats without spawning bots yet (bots that join during native selection lock real heroes and skip the ban UI). After a 10s setup countdown and a short forced-`wisp` native window, PRE_GAME pauses, runs the LOD lobby, and shows open slots. When the lobby countdown ends, empty Radiant/Dire seats are filled with hard AI bots, the roster locks, and **BAN_HEROES** begins (60s, rebroadcast to the draft UI). Bots only ban/pick after each LOD phase is live; humans get 60s windows for base hero, skills, and ultimates. Placeholder sweeps keep everyone on Io until preparation installs the drafted build.
 
 **Required engine files:** `scripts/custom_net_tables.txt` must use modern **KV3** list form (`custom_net_tables = [ "ai_lod_match" ]`) and keep its **UTF-8 BOM** — without it the engine fails encoding detection, `ai_lod_match` never registers, and the draft UI stays blank (`Unknown custom nettable 'ai_lod_match'`). Old KV1 `"ai_lod_match" "1"` blocks are ignored by current Dota clients. After pulling updates, re-run `install.bat` / `install.sh` so Workshop Tools picks up the new file.
 
@@ -142,10 +142,10 @@ Installer copies `game/` → `dota 2 beta/game/dota_addons/dota-lod-deathroll/`.
 2. Steam → Dota 2 → **Launch Dota 2 - Tools**
 3. Select **`dota-lod-deathroll`** → **Play**
 4. Draft flow:
-   - **Lobby**: join Radiant or Dire and ready up. When the lobby countdown ends, empty ally/enemy slots are detected and filled with **hard AI bots** (random names). Bots auto-draft random heroes and skills so you can play solo or partial lobbies
-   - **Ban** one hero (60s)
-   - **Hero draft**: pick from your random 3×4 within 60s (reroll a category once)
-   - **Ability draft**: choose 3 basics within 60s, then choose 1 initial ultimate in its own 60s phase
+   - **Lobby**: join Radiant or Dire and ready up. Empty seats are **detected** (not filled yet). When the lobby countdown ends, those seats are filled with **hard AI bots** (random names), then drafting starts
+   - **Ban** one hero (60s). Bots ban only after this phase is live
+   - **Hero draft**: pick from your random 3×4 within 60s (reroll a category once). Bots pick random bases here
+   - **Ability draft**: choose 3 basics within 60s, then choose 1 initial ultimate in its own 60s phase. Bots roll random skills/ults; humans keep the full minute
    - **Bonus ultimate**: choose a second ultimate and **Confirm lock** (no rerolls)
    - **Final build**: inspect the hero and five abilities, then **Confirm build**
    - **Validation**: the server checks the build before permitting preparation

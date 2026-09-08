@@ -244,9 +244,37 @@ function BotManager:TryAddBot(team, name)
 	return nil
 end
 
+function BotManager:EmptySlotCounts()
+	return {
+		radiant = math.max(0, TEAM_SIZE - self:TeamCount(DOTA_TEAM_GOODGUYS)),
+		dire = math.max(0, TEAM_SIZE - self:TeamCount(DOTA_TEAM_BADGUYS)),
+	}
+end
+
+-- Detect open Radiant/Dire seats without spawning bots. Used during setup and
+-- the LOD lobby so the UI can show empty slots before the countdown ends.
+function BotManager:PublishEmptySlots(gameMode)
+	local empty = self:EmptySlotCounts()
+	empty.total = empty.radiant + empty.dire
+	if gameMode then gameMode.emptySlots = empty end
+	local signature = empty.radiant .. ":" .. empty.dire
+	if self.lastEmptySignature ~= signature then
+		self.lastEmptySignature = signature
+		print(string.format("[BotManager] Empty slots detected: Radiant=%d Dire=%d (total=%d)",
+			empty.radiant, empty.dire, empty.total))
+	end
+	return empty
+end
+
 function BotManager:FillEmptySlots()
 	if PlayerState.roster then return self.filled end
 	if self.filled and self:TeamsFull() then return true end
+
+	local before = self:PublishEmptySlots(self.gameMode)
+	if before.total <= 0 then
+		self.filled = true
+		return true
+	end
 
 	self:ApplyHardDifficulty()
 	self:AutoAssignUnassigned()
@@ -269,6 +297,7 @@ function BotManager:FillEmptySlots()
 	-- Reclaim any bots that still sit in the unassigned column of team select.
 	self:AutoAssignUnassigned()
 	self.filled = self:TeamsFull()
+	self:PublishEmptySlots(self.gameMode)
 	print(string.format("[BotManager] Bot fill complete (+%d, full=%s). Radiant=%d Dire=%d",
 		added, tostring(self.filled), self:TeamCount(DOTA_TEAM_GOODGUYS), self:TeamCount(DOTA_TEAM_BADGUYS)))
 	return self.filled or added > 0

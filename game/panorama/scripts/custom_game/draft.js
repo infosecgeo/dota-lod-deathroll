@@ -205,8 +205,13 @@ function RenderLobby(event) {
 	RenderRosterRows($("#LobbyRadiant"), players, 2, 5);
 	RenderRosterRows($("#LobbyDire"), players, 3, 5);
 	Timer("#LobbyTimer", event);
-	$("#LobbyStatus").text = players.length + "/" + (event.required_players || 10) + " · "
-		+ (event.status ? L("status_" + event.status) : L("waiting"));
+	var empty = Number(event.empty_slots != null ? event.empty_slots
+		: (Number(event.empty_radiant || 0) + Number(event.empty_dire || 0)));
+	var emptyHint = empty > 0
+		? (" · " + empty + " " + L("open_slot") + (IsTrue(event.fill_bots_on_countdown) ? " → " + L("bot_hard") : ""))
+		: "";
+	$("#LobbyStatus").text = players.length + "/" + (event.max_players || event.required_players || 10) + " · "
+		+ (event.status ? L("status_" + event.status) : L("waiting")) + emptyHint;
 	var local = players.filter(function (p) { return Number(p.player_id) === Players.GetLocalPlayer(); })[0];
 	$("#LobbyReadyBtn").enabled = !!local && !IsTrue(local.ready);
 }
@@ -557,22 +562,40 @@ function RenderResults(event) {
 }
 GameEvents.Subscribe("ai_lod_results", RenderResults);
 $("#ResultsCloseBtn").SetPanelEvent("onactivate", function () { resultsClosed = true; $("#MatchResults").SetHasClass("Visible", false); });
-CustomNetTables.SubscribeNetTableListener("ai_lod_match", function (table, key, data) {
-	if (key === "state") SetDraftState(data, true);
-	if (key === "results") RenderResults(data);
-	if (key === "roster") RenderRoster(data);
-	if (key === "lobby") RenderLobby(data);
-	if (key === "preparation") RenderPreparation(data);
-});
+function NetTable(key) {
+	// Unknown/missing ai_lod_match must never kill the draft script — events still recover the UI.
+	try {
+		return CustomNetTables.GetTableValue("ai_lod_match", key);
+	} catch (err) {
+		return null;
+	}
+}
+try {
+	CustomNetTables.SubscribeNetTableListener("ai_lod_match", function (table, key, data) {
+		if (key === "state") SetDraftState(data, true);
+		if (key === "results") RenderResults(data);
+		if (key === "roster") RenderRoster(data);
+		if (key === "lobby") RenderLobby(data);
+		if (key === "preparation") RenderPreparation(data);
+	});
+} catch (err) {
+	$.Msg("[AI-LOD] nettable subscribe failed; relying on game events");
+}
 HideAll();
-RenderRoster(CustomNetTables.GetTableValue("ai_lod_match", "roster"));
-lobbySnapshot = CustomNetTables.GetTableValue("ai_lod_match", "lobby");
-preparationSnapshot = CustomNetTables.GetTableValue("ai_lod_match", "preparation");
-SetDraftState(CustomNetTables.GetTableValue("ai_lod_match", "state"), true);
-RenderResults(CustomNetTables.GetTableValue("ai_lod_match", "results"));
+RenderRoster(NetTable("roster"));
+lobbySnapshot = NetTable("lobby");
+preparationSnapshot = NetTable("preparation");
+SetDraftState(NetTable("state"), true);
+RenderResults(NetTable("results"));
 UpdateBuild({});
+// Default to LOBBY chrome so a missed snapshot still shows the draft shell.
+if (!currentState) {
+	SetDraftState({ name: "LOBBY" }, true);
+	if (lobbySnapshot) RenderLobby(lobbySnapshot);
+}
 (function RequestState() {
-	if (receivedState) return;
+	if (receivedState && currentState && currentState !== "LOBBY") return;
+	if (receivedState && currentState === "LOBBY" && lobbySnapshot) return;
 	Send("ai_lod_client_ready");
-	$.Schedule(2, RequestState);
+	$.Schedule(1.5, RequestState);
 })();
