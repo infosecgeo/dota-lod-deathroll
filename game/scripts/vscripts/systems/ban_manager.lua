@@ -1,9 +1,9 @@
 -- systems/ban_manager.lua
--- Phase 3: 30s server-validated hero ban.
+-- Server-validated hero ban.
 
 BanManager = BanManager or class({})
 
-local BAN_TIME = 30
+local BAN_TIME = 50
 
 function BanManager:constructor(heroManager)
 	self.heroManager = heroManager
@@ -24,6 +24,7 @@ function BanManager:Start(onComplete)
 	self.timeLeft = BAN_TIME
 	self.active = true
 	self.deadline = Time() + BAN_TIME
+	PlayerState:ForEachParticipant(function(_, record) record.draftState = "BAN_HEROES" end)
 
 	if self.heroManager then
 		self.heroManager:LoadPool()
@@ -41,6 +42,7 @@ function BanManager:Start(onComplete)
 		if not self.active or self.finished then return nil end
 		self.timeLeft = math.max(0, math.ceil(self.deadline - Time()))
 		CustomGameEventManager:Send_ServerToAllClients("ai_lod_ban_timer", { time = self.timeLeft })
+		if GameState.owner and GameState.owner.PublishRoster then GameState.owner:PublishRoster() end
 		if self.timeLeft <= 0 then
 			self:Finish()
 			return nil
@@ -52,7 +54,7 @@ end
 function BanManager:HandleBan(playerID, heroName)
 	if not self.active or self.finished then return end
 	if not GameState or not GameState:Is(GameState.BAN) then return end
-	if playerID == nil or not PlayerResource:IsValidPlayerID(playerID) then return end
+	if not PlayerState:IsParticipant(playerID) or Time() >= self.deadline then return end
 	if self.playerBanned[playerID] then return end
 
 	local ok, reason = self.heroManager:Ban(heroName, playerID)
@@ -72,11 +74,12 @@ function BanManager:HandleBan(playerID, heroName)
 		hero = heroName,
 	})
 	self:SyncPlayer(playerID)
+	if GameState.owner and GameState.owner.PublishRoster then GameState.owner:PublishRoster() end
 
-	-- Early finish when every connected player has banned
+	-- Disconnected participants retain their slot until the server deadline.
 	local pending = false
 	if PlayerState then
-		PlayerState:ForEachConnected(function(pid, _)
+		PlayerState:ForEachParticipant(function(pid, _)
 			if not self.playerBanned[pid] then pending = true end
 		end)
 	end
@@ -87,6 +90,17 @@ end
 
 function BanManager:Finish()
 	if not self.active or self.finished then return end
+	PlayerState:ForEachParticipant(function(playerID, record)
+		if self.playerBanned[playerID] then return end
+		for _, hero in ipairs(self.heroManager:LoadPool()) do
+			if self.heroManager:Ban(hero, playerID) then
+				self.playerBanned[playerID] = true
+				table.insert(record.bannedHeroes, hero)
+				CustomGameEventManager:Send_ServerToAllClients("ai_lod_hero_banned", { playerID = playerID, hero = hero })
+				break
+			end
+		end
+	end)
 	self.finished = true
 	self.active = false
 	if self.timer then Timers:RemoveTimer(self.timer) self.timer = nil end
