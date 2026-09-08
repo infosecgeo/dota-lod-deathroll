@@ -116,8 +116,10 @@ function PlayerState:IsConnected(playerID)
 end
 
 function PlayerState:IsBot(playerID)
-	return self:IsParticipant(playerID)
-		and PlayerResource:IsFakeClient(playerID)
+	if not self:IsParticipant(playerID) then return false end
+	local record = self.players[playerID]
+	if record and record.isBot then return true end
+	return PlayerResource:IsFakeClient(playerID) == true
 end
 
 function PlayerState:ForEachParticipant(fn)
