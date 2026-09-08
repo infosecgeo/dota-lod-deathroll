@@ -415,6 +415,7 @@ function AILODGameMode:BeginMatchFlow()
 	if self.fillEmptyWithBots and self.botManager then
 		self.botManager:FillEmptySlots()
 	end
+	self:EnforcePlaceholderHeroes()
 	self.lobbyOpenedAt = Time()
 	-- Ensure the lobby UI has authoritative state even if the client missed Activate.
 	CustomNetTables:SetTableValue("ai_lod_match", "state", {
@@ -567,6 +568,39 @@ function AILODGameMode:ReleaseWorld()
 		if not unit:IsNull() then unit:RemoveModifierByName("modifier_ai_lod_preparation") end
 	end
 	self.heldUnits = {}
+end
+
+-- SetCustomGameForceHero only covers human clients; engine bots can still end
+-- native selection holding a random real hero. Before the draft has produced a
+-- validated build, every participant must sit on the shared placeholder so
+-- nothing looks (or is) picked ahead of BAN_HEROES.
+function AILODGameMode:EnforcePlaceholderHeroes()
+	if not self.enableLodDraft or self.ended then return end
+	if not GameState:In(GameState.LOBBY, GameState.BAN, GameState.GENERATE_HERO_POOLS,
+		GameState.HERO_DRAFT, GameState.ABILITY_DRAFT, GameState.INITIAL_ULTIMATE,
+		GameState.ULTIMATE_DRAFT, GameState.BUILD_CONFIRMATION) then return end
+	for playerID = 0, DOTA_MAX_PLAYERS - 1 do
+		if PlayerResource:IsValidPlayerID(playerID) then
+			local record = PlayerState.players and PlayerState.players[playerID]
+			local hero = PlayerResource:GetSelectedHeroEntity(playerID)
+			if not (record and record.prepared)
+				and hero and not hero:IsNull() and hero.IsRealHero and hero:IsRealHero()
+				and hero:GetUnitName() ~= PLACEHOLDER_HERO then
+				local gold = hero.GetGold and hero:GetGold() or 0
+				local ok, replaced = pcall(function()
+					return PlayerResource:ReplaceHeroWith(playerID, PLACEHOLDER_HERO, gold, 0)
+				end)
+				if ok and replaced and not replaced:IsNull() then
+					self:HoldUnit(replaced)
+					print(string.format("[AI-LOD] Stripped pre-draft hero %s from player %d back to placeholder",
+						hero:GetUnitName(), playerID))
+				else
+					print(string.format("[AI-LOD] Failed to strip pre-draft hero %s from player %d",
+						hero:GetUnitName(), playerID))
+				end
+			end
+		end
+	end
 end
 
 function AILODGameMode:PrepareHeroes()
@@ -836,6 +870,11 @@ function AILODGameMode:OnNPCSpawned(event)
 	if not unit.IsRealHero or not unit:IsRealHero() then return end
 	if not GameState:Is(GameState.PLAYING) then
 		self:HoldUnit(unit)
+		if self.enableLodDraft and unit:GetUnitName() ~= PLACEHOLDER_HERO then
+			-- Engine-randomed bot heroes can spawn after PRE_GAME begins. Defer the
+			-- sweep one tick; EnforcePlaceholderHeroes ignores drafted/prepared heroes.
+			Timers:CreateTimer(function() self:EnforcePlaceholderHeroes() end, false)
+		end
 	else
 		self.respawnManager:OnHeroSpawn(unit)
 	end
