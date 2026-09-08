@@ -159,18 +159,16 @@ function BotManager:TryAddBot(team, name)
 
 	local addedID = nil
 	if GameRules.AddBotPlayerWithEntityScript then
-		-- Prefer an empty hero name so native selection cannot treat the bot as
-		-- having locked a real pick before BAN_HEROES. Fall back to the shared
-		-- placeholder body only when the engine rejects an empty name.
-		for _, heroName in ipairs({ "", PLACEHOLDER_HERO }) do
-			if addedID ~= nil then break end
-			local ok, result = pcall(function()
-				-- false = add immediately so team assignment sticks during setup.
-				return GameRules:AddBotPlayerWithEntityScript(heroName, name, team, "", false)
-			end)
-			if ok and type(result) == "number" and result >= 0 and result < DOTA_MAX_PLAYERS then
-				addedID = result
-			end
+		-- Always lock the shared placeholder body. SetCustomGameForceHero only
+		-- covers human clients: a bot added with an empty hero name gets a random
+		-- REAL hero from the engine when native selection ends, which skips the
+		-- BAN_HEROES gate. The wisp is replaced with the drafted base later.
+		local ok, result = pcall(function()
+			-- false = add immediately so team assignment sticks during setup.
+			return GameRules:AddBotPlayerWithEntityScript(PLACEHOLDER_HERO, name, team, "", false)
+		end)
+		if ok and type(result) == "number" and result >= 0 and result < DOTA_MAX_PLAYERS then
+			addedID = result
 		end
 	end
 
