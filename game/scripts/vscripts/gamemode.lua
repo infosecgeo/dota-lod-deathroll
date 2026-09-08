@@ -11,19 +11,23 @@ require("systems/reroll_manager")
 require("systems/respawn_manager")
 require("systems/balance_manager")
 require("systems/match_results")
+require("systems/bot_manager")
 require("mmr/client")
 
 LinkLuaModifier("modifier_ai_lod_preparation", "modifiers/modifier_ai_lod_preparation", LUA_MODIFIER_MOTION_NONE)
 
 AILODGameMode = AILODGameMode or class({})
 local ENABLE_LOD_DRAFT = true
+local FILL_EMPTY_WITH_BOTS = true
 local LOBBY_COUNTDOWN = 5
+local LOBBY_AUTO_READY_AFTER = 8
 local PREPARATION_TIMEOUT = 30
 local STRATEGY_TIME = 15
 local INTRODUCTION_TIME = 5
 
 function AILODGameMode:InitGameMode()
 	self.enableLodDraft = ENABLE_LOD_DRAFT
+	self.fillEmptyWithBots = FILL_EMPTY_WITH_BOTS
 	self.flowStarted = false
 	self.ended = false
 	self.heldUnits = {}
@@ -44,6 +48,7 @@ function AILODGameMode:InitGameMode()
 	self.abilityManager:Load()
 	self.banManager = BanManager(self.heroManager)
 	self.draftManager = DraftManager(self.heroManager, self.abilityManager)
+	self.botManager = BotManager(self)
 	self.rerollManager = RerollManager()
 	self.respawnManager = RespawnManager(self.abilityManager, self.rerollManager)
 	self.respawnManager.enabledDraft = ENABLE_LOD_DRAFT
@@ -60,7 +65,8 @@ end
 function AILODGameMode:SetupGameRules()
 	GameRules:SetCustomGameTeamMaxPlayers(DOTA_TEAM_GOODGUYS, 5)
 	GameRules:SetCustomGameTeamMaxPlayers(DOTA_TEAM_BADGUYS, 5)
-	GameRules:SetCustomGameSetupAutoLaunchDelay(5)
+	-- Extra setup time so empty slots can be filled with hard AI bots.
+	GameRules:SetCustomGameSetupAutoLaunchDelay(15)
 	GameRules:SetStrategyTime(0)
 	GameRules:SetShowcaseTime(0)
 	GameRules:SetPostGameTime(30)
@@ -81,6 +87,8 @@ function AILODGameMode:SetupGameRules()
 	mode:SetFogOfWarDisabled(false)
 	mode:SetUnseenFogOfWarEnabled(true)
 	if mode.SetFixedRespawnTime then mode:SetFixedRespawnTime(-1) end
+	if mode.SetBotThinkingEnabled then mode:SetBotThinkingEnabled(true) end
+	if mode.SetBotsInLateGame then mode:SetBotsInLateGame(true) end
 	mode:SetExecuteOrderFilter(Dynamic_Wrap(AILODGameMode, "FilterOrder"), self)
 	mode:SetDamageFilter(function() return not self.ended and GameState:Is(GameState.PLAYING) end, self)
 end
@@ -92,6 +100,7 @@ function AILODGameMode:RegisterStateHandlers()
 				GameState:Transition(GameState.GENERATE_HERO_POOLS)
 			end
 		end)
+		if self.botManager then self.botManager:AutoBan(self.banManager) end
 	end)
 	GameState:OnEnter(GameState.GENERATE_HERO_POOLS, function()
 		self.draftManager:GenerateHeroPools()
@@ -103,6 +112,7 @@ function AILODGameMode:RegisterStateHandlers()
 				GameState:Transition(GameState.ABILITY_DRAFT)
 			end
 		end)
+		if self.botManager then self.botManager:AutoHero(self.draftManager) end
 	end)
 	GameState:OnEnter(GameState.ABILITY_DRAFT, function()
 		self.draftManager:StartAbilityDraft(function()
@@ -110,6 +120,7 @@ function AILODGameMode:RegisterStateHandlers()
 				GameState:Transition(GameState.INITIAL_ULTIMATE)
 			end
 		end)
+		if self.botManager then self.botManager:AutoAbilities(self.draftManager) end
 	end)
 	GameState:OnEnter(GameState.INITIAL_ULTIMATE, function()
 		self.draftManager:StartInitialUltimate(function()
@@ -117,6 +128,7 @@ function AILODGameMode:RegisterStateHandlers()
 				GameState:Transition(GameState.ULTIMATE_DRAFT)
 			end
 		end)
+		if self.botManager then self.botManager:AutoInitialUlt(self.draftManager) end
 	end)
 	GameState:OnEnter(GameState.ULTIMATE_DRAFT, function()
 		self.draftManager:StartUltimateDraft(function()
@@ -124,6 +136,7 @@ function AILODGameMode:RegisterStateHandlers()
 				GameState:Transition(GameState.BUILD_CONFIRMATION)
 			end
 		end)
+		if self.botManager then self.botManager:AutoBonusUlt(self.draftManager) end
 	end)
 	GameState:OnEnter(GameState.BUILD_CONFIRMATION, function()
 		self.draftManager:StartBuildConfirmation(function()
@@ -131,6 +144,7 @@ function AILODGameMode:RegisterStateHandlers()
 				GameState:Transition(GameState.ABILITY_VALIDATION)
 			end
 		end)
+		if self.botManager then self.botManager:AutoBuild(self.draftManager) end
 	end)
 	GameState:OnEnter(GameState.ABILITY_VALIDATION, function()
 		local valid, changed = self.draftManager:ValidateAndRecover()
@@ -145,6 +159,7 @@ function AILODGameMode:RegisterStateHandlers()
 		PlayerState:ForEachParticipant(function(_, record) record.draftState = "GAME" end)
 		self:ReleaseWorld()
 		GameRules:GetGameModeEntity():SetPauseEnabled(true)
+		if self.botManager then self.botManager:ApplyHardDifficulty() end
 		CustomGameEventManager:Send_ServerToAllClients("ai_lod_playing", {})
 		CustomGameEventManager:Send_ServerToAllClients("lod_battle_start", {})
 		self:PublishRoster()
@@ -183,20 +198,38 @@ function AILODGameMode:RegisterEvents()
 	for eventName, method in pairs(handlers) do
 		local handler = method
 		CustomGameEventManager:RegisterListener(eventName, function(source, event)
-			local playerID = self:EventPlayerID(source)
+			local playerID = self:EventPlayerID(source, event)
 			if playerID == nil or type(event) ~= "table" then return end
 			self[handler](self, playerID, event)
 		end)
 	end
 end
 
-function AILODGameMode:EventPlayerID(source)
-	if type(source) ~= "number" or source <= 0 or source % 1 ~= 0 then return nil end
-	local player = EntIndexToHScript(source)
-	if not player or player:IsNull() or not player.GetPlayerID then return nil end
-	local playerID = player:GetPlayerID()
-	if not PlayerState:IsParticipant(playerID) or PlayerResource:GetPlayer(playerID) ~= player then return nil end
-	return playerID
+function AILODGameMode:EventPlayerID(source, event)
+	-- Prefer the authenticated sender. Dota may pass a player entity index or a playerID.
+	if type(source) == "number" and source == math.floor(source) then
+		if source > 0 then
+			local entity = EntIndexToHScript(source)
+			if entity and not entity:IsNull() and entity.GetPlayerID then
+				local playerID = entity:GetPlayerID()
+				if PlayerState:IsParticipant(playerID) and PlayerResource:GetPlayer(playerID) == entity then
+					return playerID
+				end
+			end
+		end
+		if source >= 0 and source < DOTA_MAX_PLAYERS
+			and PlayerState:IsParticipant(source) and PlayerResource:GetPlayer(source) then
+			return source
+		end
+	end
+	-- Some engine builds only stamp PlayerID on the payload.
+	if type(event) == "table" then
+		local fromEvent = tonumber(event.PlayerID or event.playerID or event.player_id)
+		if fromEvent and PlayerState:IsParticipant(fromEvent) and PlayerResource:GetPlayer(fromEvent) then
+			return fromEvent
+		end
+	end
+	return nil
 end
 
 function AILODGameMode:OnGameRulesStateChange()
@@ -206,9 +239,17 @@ function AILODGameMode:OnGameRulesStateChange()
 		return
 	end
 	if self.ended then return end
-	if state == DOTA_GAMERULES_STATE_PRE_GAME then
+	if state == DOTA_GAMERULES_STATE_CUSTOM_GAME_SETUP then
+		if self.fillEmptyWithBots and self.botManager then
+			self.botManager:FillEmptySlots()
+			self:PublishRoster()
+		end
+	elseif state == DOTA_GAMERULES_STATE_PRE_GAME then
 		self.draftPause = true
 		PauseGame(true)
+		if self.fillEmptyWithBots and self.botManager then
+			self.botManager:FillEmptySlots()
+		end
 		self:BeginMatchFlow()
 	elseif state == DOTA_GAMERULES_STATE_GAME_IN_PROGRESS then
 		if self.spawnReady and GameState:Is(GameState.SPAWN) then
@@ -225,8 +266,25 @@ end
 function AILODGameMode:BeginMatchFlow()
 	if self.flowStarted or self.ended then return end
 	self.flowStarted = true
+	if self.fillEmptyWithBots and self.botManager then
+		self.botManager:FillEmptySlots()
+	end
+	self.lobbyOpenedAt = Time()
+	-- Ensure the lobby UI has authoritative state even if the client missed Activate.
+	CustomNetTables:SetTableValue("ai_lod_match", "state", {
+		state = GameState:Get(), name = GameState:Name(),
+	})
+	self:PublishRoster()
 	Timers:CreateTimer(function()
 		if self.ended or not GameState:Is(GameState.LOBBY) then return end
+		-- Humans who loaded the UI but never pressed Ready still start after a short grace period.
+		if self.lobbyOpenedAt and Time() >= self.lobbyOpenedAt + LOBBY_AUTO_READY_AFTER then
+			PlayerState:ForEachParticipant(function(playerID, record)
+				if not PlayerState:IsBot(playerID) and record.clientReady then
+					record.lobbyReady = true
+				end
+			end)
+		end
 		local ready, signature = self:LobbyCanStart()
 		if not ready or signature ~= self.lobbySignature then self.lobbyDeadline = nil end
 		self.lobbySignature = signature
@@ -254,18 +312,25 @@ function AILODGameMode:BeginMatchFlow()
 end
 
 function AILODGameMode:LobbyCanStart()
-	local count, teams, ready, signature = 0, {}, true, {}
+	local count, humans, teams, ready, signature = 0, 0, {}, true, {}
 	PlayerState:ForEachParticipant(function(playerID, record)
 		local team = PlayerState:GetTeam(playerID)
 		count = count + 1
 		teams[team] = true
 		table.insert(signature, tostring(playerID) .. ":" .. tostring(team))
-		if not PlayerState:IsBot(playerID) and (not PlayerState:IsConnected(playerID)
-			or not record.clientReady or not record.lobbyReady) then ready = false end
+		local bot = PlayerState:IsBot(playerID)
+		if not bot then
+			humans = humans + 1
+			if not PlayerState:IsConnected(playerID) or not record.clientReady or not record.lobbyReady then
+				ready = false
+			end
+		end
 	end)
-	self.requiredPlayers = IsInToolsMode() and 1 or 2
-	local enough = count >= self.requiredPlayers
-	local bothTeams = IsInToolsMode() or (teams[DOTA_TEAM_GOODGUYS] and teams[DOTA_TEAM_BADGUYS])
+	-- With bot fill, one human is enough; bots complete both teams.
+	self.requiredPlayers = 1
+	local enough = humans >= 1 or (IsInToolsMode() and count >= 1)
+	local bothTeams = teams[DOTA_TEAM_GOODGUYS] and teams[DOTA_TEAM_BADGUYS]
+	if IsInToolsMode() and humans >= 1 then bothTeams = true end
 	self.lobbyStatus = not enough and "waiting_for_players"
 		or not bothTeams and "waiting_for_teams" or not ready and "waiting_for_ready" or "countdown"
 	return enough and bothTeams and ready, table.concat(signature, ",")
@@ -288,6 +353,8 @@ function AILODGameMode:RosterPayload()
 			basic_count = #record.abilities.basic, ultimate_count = #record.abilities.ultimate,
 			connected = PlayerState:IsConnected(playerID) and 1 or 0,
 			lane = record.lane or "",
+			is_bot = PlayerState:IsBot(playerID) and 1 or 0,
+			name = record.botName or "",
 		})
 	end)
 	local deadline = GameState:Is(GameState.LOBBY) and self.lobbyDeadline
@@ -467,6 +534,7 @@ function AILODGameMode:StartStrategy()
 		record.strategyReady = PlayerState:IsBot(playerID)
 		record.draftState = "STRATEGY_TIME"
 	end)
+	if self.botManager then self.botManager:AutoStrategy(self) end
 	-- The final entity and kit now exist; unpause permits manual shop transactions.
 	PauseGame(false)
 	self:SendPreparation()
@@ -474,7 +542,8 @@ function AILODGameMode:StartStrategy()
 	Timers:CreateTimer(function()
 		if self.ended or not GameState:Is(GameState.STRATEGY) then return end
 		local ready = true
-		PlayerState:ForEachConnected(function(_, record)
+		PlayerState:ForEachConnected(function(playerID, record)
+			if PlayerState:IsBot(playerID) then return end
 			if not record.strategyReady then ready = false end
 		end)
 		if ready or Time() >= self.presentationDeadline then

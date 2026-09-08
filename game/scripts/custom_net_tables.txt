@@ -1,4 +1,4 @@
-"custom_net_tables"
+﻿"custom_net_tables"
 {
-	"ai_lod_match"	""
+	"ai_lod_match"	"1"
 }

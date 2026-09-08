@@ -57,14 +57,16 @@ end
 DOTA_MAX_PLAYERS = 24
 DOTA_TEAM_GOODGUYS, DOTA_TEAM_BADGUYS, DOTA_TEAM_NEUTRALS = 2, 3, 4
 DOTA_CONNECTION_STATE_CONNECTED = 2
+DOTA_GAMERULES_STATE_CUSTOM_GAME_SETUP = 6
 DOTA_GAMERULES_STATE_PRE_GAME = 7
 DOTA_GAMERULES_STATE_GAME_IN_PROGRESS = 8
 DOTA_GAMERULES_STATE_POST_GAME = 9
 LUA_MODIFIER_MOTION_NONE = 0
 
 local clock, tools, configuredSeed, nativeState = 0, false, 0, 7
-local teams, connected, players, entities, heroes, gold
+local teams, connected, players, entities, heroes, gold, fakeClients
 local events, netTables, handlers, precaches, assetCallbacks, deferAssets
+local nextBotID
 function Time() return clock end
 function IsInToolsMode() return tools end
 function LinkLuaModifier() end
@@ -72,7 +74,7 @@ function ListenToGameEvent() end
 function Dynamic_Wrap() return function() end end
 function PauseGame() end
 function EntIndexToHScript(index) return entities[index] end
-Convars = { GetInt = function() return configuredSeed end }
+Convars = { GetInt = function() return configuredSeed end, SetInt = function() end }
 CustomNetTables = { SetTableValue = function(_, name, key, payload)
 	check(name == "ai_lod_match", "flow must only write a declared nettable")
 	netTables[key] = payload
@@ -89,15 +91,21 @@ PlayerResource = {
 	IsValidPlayerID = function(_, id) return teams[id] ~= nil end,
 	GetTeam = function(_, id) return teams[id] end,
 	GetConnectionState = function(_, id) return connected[id] and 2 or 0 end,
-	IsFakeClient = function() return false end,
+	IsFakeClient = function(_, id) return fakeClients[id] == true end,
 	GetPlayer = function(_, id) return players[id] end,
 	GetSelectedHeroEntity = function(_, id) return heroes[id] end,
 	GetGold = function(_, id) return gold[id] or 0 end,
+	SetCustomTeamAssignment = function(_, id, team) teams[id] = team end,
+	SetPlayerName = function() end,
 }
 GameRules = {
 	GetGameTime = function() return clock end,
 	State_Get = function() return nativeState end,
-	GetGameModeEntity = function() return { SetPauseEnabled = function() end } end,
+	GetGameModeEntity = function() return {
+		SetPauseEnabled = function() end,
+		SetBotThinkingEnabled = function() end,
+		SetBotsInLateGame = function() end,
+	} end,
 	ForceGameStart = function()
 		nativeState = DOTA_GAMERULES_STATE_GAME_IN_PROGRESS
 		GameState.owner:OnGameRulesStateChange()
@@ -105,6 +113,18 @@ GameRules = {
 	SetSafeToLeave = function() end,
 	SetGameWinner = function(self, winner) self.winner = winner end,
 	GetGameWinner = function(self) return self.winner end,
+	AddBotPlayerWithEntityScript = function(_, _hero, name, team)
+		local id = nil
+		for candidate = 0, DOTA_MAX_PLAYERS - 1 do
+			if teams[candidate] == nil then id = candidate break end
+		end
+		if id == nil then return -1 end
+		teams[id], connected[id], gold[id], fakeClients[id] = team, true, 600, true
+		players[id] = { id = id, name = name, events = {}, IsNull = function() return false end,
+			GetPlayerID = function() return id end }
+		entities[1000 + id] = players[id]
+		return id
+	end,
 }
 MatchResults = { Snapshot = function(_, winner) return { winner = winner } end }
 Timers = {
@@ -173,21 +193,22 @@ for _, name in ipairs({
 require("gamemode")
 local random = require("systems/seeded_random")
 
-local function addPlayer(id, team)
+local function addPlayer(id, team, bot)
 	teams[id], connected[id], gold[id] = team, true, 600
+	fakeClients[id] = bot == true
 	players[id] = { id = id, events = {}, IsNull = function() return false end,
 		GetPlayerID = function() return id end }
 	entities[1000 + id] = players[id]
 end
 local function setup(count)
 	clock, tools, configuredSeed, nativeState = 0, false, 0, 7
-	teams, connected, players, entities, heroes, gold = {}, {}, {}, {}, {}, {}
+	teams, connected, players, entities, heroes, gold, fakeClients = {}, {}, {}, {}, {}, {}, {}
 	events, netTables, handlers, precaches, assetCallbacks = {}, {}, {}, {}, {}
-	deferAssets, GameRules.winner = false, nil
+	deferAssets, GameRules.winner, nextBotID = false, nil, 20
 	Timers.callbacks, Timers.nextID = {}, 0
 	for id = 0, count - 1 do addPlayer(id, id < 5 and 2 or 3) end
 	local owner = AILODGameMode()
-	owner.enableLodDraft, owner.heldUnits = true, {}
+	owner.enableLodDraft, owner.fillEmptyWithBots, owner.heldUnits = true, false, {}
 	PlayerState:Init()
 	GameState:Init(owner)
 	owner.heroManager, owner.abilityManager = HeroManager(), AbilityManager()
@@ -195,6 +216,7 @@ local function setup(count)
 	owner.abilityManager:Load()
 	owner.banManager = BanManager(owner.heroManager)
 	owner.draftManager = DraftManager(owner.heroManager, owner.abilityManager)
+	owner.botManager = BotManager(owner)
 	owner.respawnManager = { SyncPlayer = function() end, CancelAll = function() end }
 	owner:RegisterStateHandlers()
 	owner:RegisterEvents()
@@ -226,7 +248,7 @@ addPlayer(0, 2)
 PlayerState:Get(0).clientReady, PlayerState:Get(0).lobbyReady = true, true
 check(owner:LobbyCanStart(), "tools solo allowed")
 tools = false
-check(not owner:LobbyCanStart(), "public solo denied")
+check(not owner:LobbyCanStart(), "public solo without opposite team denied")
 addPlayer(1, 2)
 PlayerState:Get(1).clientReady, PlayerState:Get(1).lobbyReady = true, true
 check(not owner:LobbyCanStart(), "public missing team denied")
@@ -237,6 +259,40 @@ teams[1] = nil
 addPlayer(2, 3)
 check(PlayerState:IsParticipant(1) and PlayerState:GetTeam(1) == 3, "disconnected frozen slot retained")
 check(not PlayerState:IsParticipant(2), "late entrant excluded")
+
+-- Bot fill tops both teams to 5 and auto-drafts random kits on hard AI slots.
+owner = setup(1)
+owner.fillEmptyWithBots = true
+fakeClients[0] = false
+PlayerState:Get(0).clientReady, PlayerState:Get(0).lobbyReady = true, true
+check(owner.botManager:FillEmptySlots(), "bot fill runs")
+check(owner.botManager:TeamCount(DOTA_TEAM_GOODGUYS) == 5, "radiant filled to 5")
+check(owner.botManager:TeamCount(DOTA_TEAM_BADGUYS) == 5, "dire filled to 5")
+local botSeen = false
+PlayerState:ForEachParticipant(function(id, record)
+	if id ~= 0 then
+		botSeen = botSeen or PlayerState:IsBot(id)
+		check(record.lobbyReady and record.clientReady, "bots are lobby-ready")
+		check(type(record.botName) == "string" and record.botName ~= "", "bots receive random names")
+	end
+end)
+check(botSeen, "fake clients registered as bots")
+check(owner:LobbyCanStart(), "one human plus bot-filled teams can start")
+PlayerState:LockRoster()
+GameState:Transition(GameState.BAN)
+owner.botManager:AutoBan(owner.banManager)
+PlayerState:ForEachParticipant(function(id, record)
+	if PlayerState:IsBot(id) then check(#record.bannedHeroes > 0, "bots ban immediately") end
+end)
+owner.banManager:Finish()
+phase(GameState.HERO_DRAFT)
+owner.botManager:AutoHero(owner.draftManager)
+PlayerState:ForEachParticipant(function(id, record)
+	if PlayerState:IsBot(id) then check(record.hero ~= nil, "bots pick random heroes") end
+end)
+-- Human still open so phase stays active; finish via timeout path later in lifecycle tests.
+owner.draftManager:Cancel()
+GameState.current = GameState.LOBBY
 
 local function lifecycle(seed, repair)
 	local mode = setup(10)

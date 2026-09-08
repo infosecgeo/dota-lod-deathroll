@@ -2,9 +2,9 @@
 {
 	"addon_name"				"dota-lod-deathroll"
 	"addon_display_name"		"AI-LOD"
-	"addon_description"			"AI-LOD custom game. V0.1: playable foundation + state machine. LOD draft phases come next."
+	"addon_description"			"AI-LOD custom game. LOD draft with hard AI bot fill for empty ally/enemy slots."
 	"addon_author"				"infosecgeo"
-	"addon_version"				"0.1.0"
+	"addon_version"				"1.1.0"
 	"addon_channel"				"dev"
 	"addon_team_count_max"		"2"
 	"addon_team_players_max"	"5"

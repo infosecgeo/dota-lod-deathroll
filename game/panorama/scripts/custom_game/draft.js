@@ -55,7 +55,11 @@ function PrettyName(id) {
 	var localized = $.Localize(token);
 	return localized !== token ? localized : String(id).replace(/^npc_dota_hero_/, "").replace(/_/g, " ");
 }
-function PlayerName(id) { return Players.GetPlayerName(Number(id)) || (L("player") + " " + id); }
+function PlayerName(id, row) {
+	if (row && row.name) return String(row.name);
+	if (row && IsTrue(row.is_bot)) return L("bot") + " " + id;
+	return Players.GetPlayerName(Number(id)) || (L("player") + " " + id);
+}
 function Send(name, data) { GameEvents.SendCustomGameEventToServer(name, data || {}); }
 function Text(parent, text, className) {
 	var label = $.CreatePanel("Label", parent, "");
@@ -166,9 +170,10 @@ function RenderRosterRows(parent, players, team, slots) {
 		HeroImage(row, player && player.hero);
 		var details = $.CreatePanel("Panel", row, "");
 		details.AddClass("RosterDetails");
-		Text(details, player ? PlayerName(player.player_id) : L("open_slot"), "RosterName");
+		Text(details, player ? PlayerName(player.player_id, player) : L("open_slot"), "RosterName");
 		var status = !player ? "—" : IsTrue(player.ready) ? L("ready")
 			: player.draft_state ? L("state_" + Canonical(player.draft_state).toLowerCase()) : L("waiting");
+		if (player && IsTrue(player.is_bot)) status = L("bot_hard") + " · " + status;
 		if (player && lanes[player.lane]) status = L("lane_" + player.lane) + " · " + status;
 		if (player && player.basic_count != null) status += "\n" + player.basic_count + "/3 + " + (player.ultimate_count || 0) + "/2";
 		Text(details, status, "RosterStatus");
@@ -538,7 +543,7 @@ function RenderResults(event) {
 	}
 	Row([L("player"), L("team"), "K", "D", "A", L("damage"), L("score")]);
 	TableRows(event.players).sort(function (a, b) { return Number(a.rank) - Number(b.rank); }).forEach(function (player) {
-		Row([PlayerName(player.player_id) + "\n" + PrettyName(player.hero), L(Number(player.team) === 2 ? "radiant" : "dire"),
+		Row([PlayerName(player.player_id, player) + "\n" + PrettyName(player.hero), L(Number(player.team) === 2 ? "radiant" : "dire"),
 			player.kills, player.deaths, player.assists, player.hero_damage, player.score], player.hero);
 	});
 }

@@ -58,6 +58,7 @@ tools/                         # Python balance / AI analyzer (offline)
 | `ability_manager.lua` | Ability DB + blacklist + kit application |
 | `ban_manager.lua` | 50s synchronized hero ban |
 | `draft_manager.lua` | Hero / basic / initial ultimate / bonus ultimate / build confirmation |
+| `bot_manager.lua` | Fill empty 5v5 slots with hard AI bots, random names, and instant random draft picks |
 | `seeded_random.lua` | Reproducible server-owned draft random stream |
 | `reroll_manager.lua` | Category + death reroll budgets |
 | `respawn_manager.lua` | Transactional replace-or-skip death draft without changing normal respawn time |
@@ -134,7 +135,7 @@ Installer copies `game/` → `dota 2 beta/game/dota_addons/dota-lod-deathroll/`.
 2. Steam → Dota 2 → **Launch Dota 2 - Tools**
 3. Select **`dota-lod-deathroll`** → **Play**
 4. Draft flow:
-   - **Lobby**: join Radiant or Dire and ready up; the server checks the player/team requirements
+   - **Lobby**: join Radiant or Dire and ready up. Empty ally/enemy slots are filled with **hard AI bots** (random names). Bots auto-draft random heroes and skills so you can play solo or partial lobbies
    - **Ban** one hero (50s)
    - **Hero draft**: pick from your random 3×4 (reroll a category once)
    - **Ability draft**: choose 3 basics, then choose 1 initial ultimate in its own phase

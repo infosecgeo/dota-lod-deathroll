@@ -33,6 +33,8 @@
 		"ai_lod_ready"			"Ready"
 		"ai_lod_open_slot"		"Waiting for player"
 		"ai_lod_player"			"Player"
+		"ai_lod_bot"			"Bot"
+		"ai_lod_bot_hard"		"Hard AI"
 		"ai_lod_team"			"Team"
 		"ai_lod_ban_hint"		"Ban one hero. Bans apply to everyone's draft."
 		"ai_lod_hero_hint"		"Choose your base hero · 1 optional reroll per attribute"
