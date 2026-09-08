@@ -19,7 +19,11 @@ function SetState(event) {
 
 GameEvents.Subscribe("ai_lod_state", SetState);
 GameEvents.Subscribe("ai_lod_playing", function () { SetState({ name: "GAME" }); });
-CustomNetTables.SubscribeNetTableListener("ai_lod_match", function (table, key, data) {
-	if (key === "state") SetState(data);
-});
-SetState(CustomNetTables.GetTableValue("ai_lod_match", "state"));
+try {
+	CustomNetTables.SubscribeNetTableListener("ai_lod_match", function (table, key, data) {
+		if (key === "state") SetState(data);
+	});
+	SetState(CustomNetTables.GetTableValue("ai_lod_match", "state"));
+} catch (err) {
+	SetState({ name: "LOBBY" });
+}

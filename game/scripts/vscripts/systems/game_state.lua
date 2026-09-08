@@ -114,7 +114,10 @@ function GameState:Init(owner)
 	self.listeners = {}
 	self.history = {}
 	self.locked = false
-	CustomNetTables:SetTableValue("ai_lod_match", "state", { state = self.current, name = self:Name() })
+	-- Fail soft if the nettable is missing (install/BOM issues); events still drive the UI.
+	pcall(function()
+		CustomNetTables:SetTableValue("ai_lod_match", "state", { state = self.current, name = self:Name() })
+	end)
 	print("[GameState] Initialized at LOBBY")
 end
 
@@ -186,7 +189,9 @@ function GameState:Transition(toState, payload)
 		from = fromState,
 		from_name = self:Name(fromState),
 	}
-	CustomNetTables:SetTableValue("ai_lod_match", "state", statePayload)
+	pcall(function()
+		CustomNetTables:SetTableValue("ai_lod_match", "state", statePayload)
+	end)
 	CustomGameEventManager:Send_ServerToAllClients("ai_lod_state", statePayload)
 	local cbs = self.listeners[toState]
 	if cbs then

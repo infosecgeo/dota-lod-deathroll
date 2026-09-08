@@ -247,37 +247,43 @@ function AILODGameMode:RegisterEvents()
 	}
 	for eventName, method in pairs(handlers) do
 		local handler = method
+		local allowUnassigned = eventName == "ai_lod_client_ready"
 		CustomGameEventManager:RegisterListener(eventName, function(source, event)
-			local playerID = self:EventPlayerID(source, event)
+			local playerID = self:EventPlayerID(source, event, allowUnassigned)
 			if playerID == nil or type(event) ~= "table" then return end
 			self[handler](self, playerID, event)
 		end)
 	end
 end
 
-function AILODGameMode:EventPlayerID(source, event)
+function AILODGameMode:EventPlayerID(source, event, allowUnassigned)
+	local function accepted(playerID)
+		if type(playerID) ~= "number" or playerID ~= math.floor(playerID)
+			or playerID < 0 or playerID >= DOTA_MAX_PLAYERS then
+			return false
+		end
+		if not PlayerResource:GetPlayer(playerID) then return false end
+		if PlayerState:IsParticipant(playerID) then return true end
+		-- client_ready may arrive before team assign; still accept a valid player id.
+		return allowUnassigned == true and PlayerResource:IsValidPlayerID(playerID)
+	end
 	-- Prefer the authenticated sender. Dota may pass a player entity index or a playerID.
 	if type(source) == "number" and source == math.floor(source) then
 		if source > 0 then
 			local entity = EntIndexToHScript(source)
 			if entity and not entity:IsNull() and entity.GetPlayerID then
 				local playerID = entity:GetPlayerID()
-				if PlayerState:IsParticipant(playerID) and PlayerResource:GetPlayer(playerID) == entity then
+				if accepted(playerID) and PlayerResource:GetPlayer(playerID) == entity then
 					return playerID
 				end
 			end
 		end
-		if source >= 0 and source < DOTA_MAX_PLAYERS
-			and PlayerState:IsParticipant(source) and PlayerResource:GetPlayer(source) then
-			return source
-		end
+		if accepted(source) then return source end
 	end
 	-- Some engine builds only stamp PlayerID on the payload.
 	if type(event) == "table" then
 		local fromEvent = tonumber(event.PlayerID or event.playerID or event.player_id)
-		if fromEvent and PlayerState:IsParticipant(fromEvent) and PlayerResource:GetPlayer(fromEvent) then
-			return fromEvent
-		end
+		if fromEvent and accepted(fromEvent) then return fromEvent end
 	end
 	return nil
 end
@@ -300,14 +306,32 @@ function AILODGameMode:OnGameRulesStateChange()
 		-- Do NOT PauseGame here: pausing freezes the engine clock and traps the
 		-- match in HERO_SELECTION forever (blank map, no LOD lobby UI).
 		-- Real bans/picks still wait until PRE_GAME via BeginMatchFlow.
+		-- Do NOT fill bots here either: engine bots that join before PRE_GAME
+		-- often lock real heroes (Razor/Kunkka/…) and skip BAN_HEROES visually.
 		self.draftPause = false
 		self:EnsureNativeSelectionAdvances(state)
 	elseif state == DOTA_GAMERULES_STATE_PRE_GAME then
 		self.draftPause = true
 		PauseGame(true)
-		-- No bot fill here: empty slots are detected and filled once the lobby
-		-- countdown ends, immediately before the roster locks.
-		self:BeginMatchFlow()
+		-- Defer one real-time tick so PauseGame is applied before we strip any
+		-- pre-draft bodies or start the LOD lobby. Calling EnforcePlaceholderHeroes
+		-- in the same frame as PauseGame can no-op when IsGamePaused is still false,
+		-- leaving random bot heroes locked while the human stays on Io.
+		if self.preGameFlowArmed then return end
+		self.preGameFlowArmed = true
+		Timers:CreateTimer(function()
+			if self.ended then return end
+			if GameRules:State_Get() ~= DOTA_GAMERULES_STATE_PRE_GAME then
+				self.preGameFlowArmed = false
+				return
+			end
+			if GameRules.IsGamePaused and not GameRules:IsGamePaused() then
+				PauseGame(true)
+			end
+			self.draftPause = true
+			self:BeginMatchFlow()
+			return nil
+		end, false)
 	elseif state == DOTA_GAMERULES_STATE_GAME_IN_PROGRESS then
 		if self.spawnReady and GameState:Is(GameState.SPAWN) then
 			GameState:Transition(GameState.PLAYING)
@@ -362,8 +386,8 @@ function AILODGameMode:StartCustomGameSetup()
 	if self.setupStarted or self.ended then return end
 	self.setupStarted = true
 	self.setupOpenedAt = Time()
-	self.setupStatus = "filling"
-	print(string.format("[AI-LOD] Custom game setup: %ds countdown, bot fill enabled=%s",
+	self.setupStatus = "assigning"
+	print(string.format("[AI-LOD] Custom game setup: %ds countdown, deferred bot fill=%s",
 		SETUP_COUNTDOWN, tostring(self.fillEmptyWithBots)))
 
 	if GameRules.EnableCustomGameSetupAutoLaunch then
@@ -373,8 +397,12 @@ function AILODGameMode:StartCustomGameSetup()
 		GameRules:SetCustomGameSetupRemainingTime(SETUP_COUNTDOWN)
 	end
 
-	if self.fillEmptyWithBots and self.botManager then
-		self.botManager:FillEmptySlots()
+	-- Detect empty Radiant/Dire seats and auto-assign unassigned humans only.
+	-- Do NOT spawn bots yet: bots that join before PRE_GAME walk native hero
+	-- selection, lock real bases, and make BAN_HEROES look skipped.
+	if self.botManager then
+		self.botManager:AutoAssignUnassigned()
+		self.botManager:PublishEmptySlots(self)
 	end
 	self:PublishRoster()
 
@@ -382,8 +410,9 @@ function AILODGameMode:StartCustomGameSetup()
 		if self.ended then return end
 		if GameRules:State_Get() ~= DOTA_GAMERULES_STATE_CUSTOM_GAME_SETUP then return end
 
-		if self.fillEmptyWithBots and self.botManager then
-			self.botManager:FillEmptySlots()
+		if self.botManager then
+			self.botManager:AutoAssignUnassigned()
+			self.botManager:PublishEmptySlots(self)
 		end
 
 		local remaining = math.max(0, math.ceil(SETUP_COUNTDOWN - (Time() - self.setupOpenedAt)))
@@ -414,14 +443,26 @@ function AILODGameMode:BeginMatchFlow()
 	self:EnforcePlaceholderHeroes()
 	self.lobbyOpenedAt = Time()
 	-- Ensure the lobby UI has authoritative state even if the client missed Activate.
-	CustomNetTables:SetTableValue("ai_lod_match", "state", {
+	pcall(function()
+		CustomNetTables:SetTableValue("ai_lod_match", "state", {
+			state = GameState:Get(), name = GameState:Name(),
+		})
+	end)
+	CustomGameEventManager:Send_ServerToAllClients("ai_lod_state", {
 		state = GameState:Get(), name = GameState:Name(),
 	})
+	if self.botManager then self.botManager:PublishEmptySlots(self) end
 	self:PublishRoster()
+	-- Keep stripping accidental real heroes while the LOD lobby/draft pause holds.
+	self:StartPlaceholderSweep()
 	Timers:CreateTimer(function()
 		if self.ended or not GameState:Is(GameState.LOBBY) then return end
+		if self.botManager then
+			self.botManager:AutoAssignUnassigned()
+			self.botManager:PublishEmptySlots(self)
+		end
 		-- Connected humans start after a short grace period even if the UI never
-		-- reported ready (so bot-filled lobbies are not stuck forever).
+		-- reported ready (so partial lobbies are not stuck forever).
 		if self.lobbyOpenedAt and Time() >= self.lobbyOpenedAt + LOBBY_AUTO_READY_AFTER then
 			PlayerState:ForEachParticipant(function(playerID, record)
 				if not PlayerState:IsBot(playerID) then
@@ -435,7 +476,7 @@ function AILODGameMode:BeginMatchFlow()
 		self.lobbySignature = signature
 		if ready and not self.lobbyDeadline then self.lobbyDeadline = Time() + LOBBY_COUNTDOWN end
 		self:PublishRoster()
-		if ready and Time() >= self.lobbyDeadline then
+		if ready and self.lobbyDeadline and Time() >= self.lobbyDeadline then
 			if IsInToolsMode() then
 				local seed = Convars:GetInt("ai_lod_seed")
 				if seed and seed ~= 0 then
@@ -443,15 +484,21 @@ function AILODGameMode:BeginMatchFlow()
 					DraftRandom:Init(seed)
 				end
 			end
-			-- Countdown ended: detect empty Radiant/Dire slots (late leavers,
-			-- never-joined seats) and fill them with bots before the roster
-			-- locks and BAN_HEROES begins.
+			-- Countdown ended: detect empty Radiant/Dire slots and fill them with
+			-- hard bots, then lock the roster and open BAN_HEROES. Bots never join
+			-- earlier, so they cannot lock a real base before bans.
 			if self.fillEmptyWithBots and self.botManager then
+				print("[AI-LOD] Lobby countdown ended — filling detected empty slots with bots")
 				self.botManager:FillEmptySlots()
+				self:EnforcePlaceholderHeroes()
 			end
 			PlayerState:LockRoster()
+			self:PublishRoster()
 			if self.enableLodDraft then
-				GameState:Transition(GameState.BAN)
+				if not GameState:Transition(GameState.BAN) then
+					print("[AI-LOD] Failed to enter BAN_HEROES from LOBBY")
+					self:AbortPreparation("ban_phase_failed")
+				end
 			else
 				self:PrepareHeroes()
 			end
@@ -459,6 +506,28 @@ function AILODGameMode:BeginMatchFlow()
 			return
 		end
 		return 0.25
+	end, false)
+end
+
+function AILODGameMode:StartPlaceholderSweep()
+	if self.placeholderSweepArmed or self.ended then return end
+	self.placeholderSweepArmed = true
+	Timers:CreateTimer(function()
+		if self.ended or not self.draftPause then
+			self.placeholderSweepArmed = false
+			return
+		end
+		if GameState:In(GameState.LOBBY, GameState.BAN, GameState.GENERATE_HERO_POOLS,
+			GameState.HERO_DRAFT, GameState.ABILITY_DRAFT, GameState.INITIAL_ULTIMATE,
+			GameState.ULTIMATE_DRAFT, GameState.BUILD_CONFIRMATION) then
+			if GameRules.IsGamePaused and not GameRules:IsGamePaused() then
+				PauseGame(true)
+			end
+			self:EnforcePlaceholderHeroes()
+			return 1
+		end
+		self.placeholderSweepArmed = false
+		return nil
 	end, false)
 end
 
@@ -477,11 +546,16 @@ function AILODGameMode:LobbyCanStart()
 			end
 		end
 	end)
-	-- With bot fill, one human is enough; bots complete both teams.
+	-- With deferred bot fill, one ready human is enough to start the lobby
+	-- countdown. Empty seats are detected now and filled when it ends.
 	self.requiredPlayers = 1
 	local enough = humans >= 1 or (IsInToolsMode() and count >= 1)
 	local bothTeams = teams[DOTA_TEAM_GOODGUYS] and teams[DOTA_TEAM_BADGUYS]
 	if IsInToolsMode() and humans >= 1 then bothTeams = true end
+	if self.fillEmptyWithBots and humans >= 1 then bothTeams = true end
+	local emptyGood = self.botManager and math.max(0, 5 - self.botManager:TeamCount(DOTA_TEAM_GOODGUYS)) or 0
+	local emptyBad = self.botManager and math.max(0, 5 - self.botManager:TeamCount(DOTA_TEAM_BADGUYS)) or 0
+	self.emptySlots = { radiant = emptyGood, dire = emptyBad, total = emptyGood + emptyBad }
 	self.lobbyStatus = not enough and "waiting_for_players"
 		or not bothTeams and "waiting_for_teams" or not ready and "waiting_for_ready" or "countdown"
 	return enough and bothTeams and ready, table.concat(signature, ",")
@@ -520,12 +594,21 @@ function AILODGameMode:RosterPayload()
 	elseif GameState:Is(GameState.LOBBY) then
 		status = self.lobbyStatus or "waiting_for_players"
 	end
+	local empty = self.emptySlots or {
+		radiant = self.botManager and math.max(0, 5 - self.botManager:TeamCount(DOTA_TEAM_GOODGUYS)) or 0,
+		dire = self.botManager and math.max(0, 5 - self.botManager:TeamCount(DOTA_TEAM_BADGUYS)) or 0,
+	}
+	empty.total = (empty.radiant or 0) + (empty.dire or 0)
 	return { players = players, required_players = self.requiredPlayers or (IsInToolsMode() and 1 or 2),
 		time = math.max(0, math.ceil((deadline or Time()) - Time())),
 		status = status,
 		phase = inSetup and "SETUP" or GameState:Name(), total = #players, completed = completed,
 		locked = PlayerState.roster ~= nil,
 		team_slots = 5, max_players = 10,
+		empty_radiant = empty.radiant or 0,
+		empty_dire = empty.dire or 0,
+		empty_slots = empty.total or 0,
+		fill_bots_on_countdown = self.fillEmptyWithBots and 1 or 0,
 		banned = table.concat(self.heroManager and self.heroManager:GetBannedList() or {}, ","),
 		setup_countdown = SETUP_COUNTDOWN,
 		lobby_countdown = LOBBY_COUNTDOWN,
@@ -538,10 +621,10 @@ function AILODGameMode:PublishRoster(player)
 		CustomGameEventManager:Send_ServerToPlayer(player, "ai_lod_roster", payload)
 		if GameState:Is(GameState.LOBBY) then CustomGameEventManager:Send_ServerToPlayer(player, "ai_lod_lobby", payload) end
 	else
-		CustomNetTables:SetTableValue("ai_lod_match", "roster", payload)
+		pcall(function() CustomNetTables:SetTableValue("ai_lod_match", "roster", payload) end)
 		CustomGameEventManager:Send_ServerToAllClients("ai_lod_roster", payload)
 		if GameState:Is(GameState.LOBBY) then
-			CustomNetTables:SetTableValue("ai_lod_match", "lobby", payload)
+			pcall(function() CustomNetTables:SetTableValue("ai_lod_match", "lobby", payload) end)
 			CustomGameEventManager:Send_ServerToAllClients("ai_lod_lobby", payload)
 		end
 	end
@@ -582,8 +665,14 @@ function AILODGameMode:EnforcePlaceholderHeroes()
 		GameState.HERO_DRAFT, GameState.ABILITY_DRAFT, GameState.INITIAL_ULTIMATE,
 		GameState.ULTIMATE_DRAFT, GameState.BUILD_CONFIRMATION) then return end
 	-- ReplaceHeroWith on a live entity mid-frame freezes the client on the old
-	-- hero; only strip while the PRE_GAME server pause holds the world.
-	if GameRules.IsGamePaused and not GameRules:IsGamePaused() then return end
+	-- hero. Prefer draftPause (set as soon as PRE_GAME begins) over IsGamePaused,
+	-- because PauseGame can lag one tick and previously skipped this sweep —
+	-- leaving Razor/Kunkka locked while the host stayed on Io.
+	if not self.draftPause then
+		if GameRules.IsGamePaused and not GameRules:IsGamePaused() then return end
+	elseif GameRules.IsGamePaused and not GameRules:IsGamePaused() then
+		PauseGame(true)
+	end
 	for playerID = 0, DOTA_MAX_PLAYERS - 1 do
 		if PlayerResource:IsValidPlayerID(playerID) then
 			local record = PlayerState.players and PlayerState.players[playerID]
@@ -592,16 +681,17 @@ function AILODGameMode:EnforcePlaceholderHeroes()
 				and hero and not hero:IsNull() and hero.IsRealHero and hero:IsRealHero()
 				and hero:GetUnitName() ~= PLACEHOLDER_HERO then
 				local gold = hero.GetGold and hero:GetGold() or 0
+				local previousName = hero:GetUnitName()
 				local ok, replaced = pcall(function()
 					return PlayerResource:ReplaceHeroWith(playerID, PLACEHOLDER_HERO, gold, 0)
 				end)
 				if ok and replaced and not replaced:IsNull() then
 					self:HoldUnit(replaced)
 					print(string.format("[AI-LOD] Stripped pre-draft hero %s from player %d back to placeholder",
-						hero:GetUnitName(), playerID))
+						previousName, playerID))
 				else
 					print(string.format("[AI-LOD] Failed to strip pre-draft hero %s from player %d",
-						hero:GetUnitName(), playerID))
+						previousName, playerID))
 				end
 			end
 		end
@@ -872,6 +962,12 @@ function AILODGameMode:RunSpawnPhase()
 end
 
 function AILODGameMode:OnClientReady(playerID)
+	-- Pull unassigned clients onto a playable team so draft events can authenticate.
+	if self.botManager and not PlayerState:IsParticipant(playerID)
+		and PlayerResource:IsValidPlayerID(playerID) then
+		self.botManager:AutoAssignUnassigned()
+	end
+	if not PlayerState:IsParticipant(playerID) then return end
 	local record = PlayerState:Get(playerID)
 	record.clientReady = true
 	local player = PlayerResource:GetPlayer(playerID)

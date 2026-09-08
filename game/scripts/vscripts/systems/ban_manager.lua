@@ -18,6 +18,28 @@ function BanManager:constructor(heroManager)
 	self.active = false
 end
 
+function BanManager:BanStartPayload(locked)
+	local pool = (self.heroManager and self.heroManager:LoadPool()) or {}
+	return {
+		time = self.timeLeft or BAN_TIME,
+		heroes = table.concat(pool, ","),
+		banned = table.concat((self.heroManager and self.heroManager:GetBannedList()) or {}, ","),
+		locked = locked == true,
+	}
+end
+
+function BanManager:BroadcastStart(force)
+	if not self.active or self.finished then return end
+	-- Re-send the full ban panel payload so late/failed nettable clients still open BAN_HEROES.
+	CustomGameEventManager:Send_ServerToAllClients("ai_lod_state", {
+		state = GameState.BAN, name = "BAN_HEROES",
+	})
+	CustomGameEventManager:Send_ServerToAllClients("ai_lod_ban_start", self:BanStartPayload(false))
+	if force and GameState.owner and GameState.owner.PublishRoster then
+		GameState.owner:PublishRoster()
+	end
+end
+
 function BanManager:Start(onComplete)
 	self:Cancel()
 	print("[BanManager] Start — hero ban, " .. BAN_TIME .. "s")
@@ -28,24 +50,25 @@ function BanManager:Start(onComplete)
 	self.active = true
 	self.startedAt = Time()
 	self.deadline = Time() + BAN_TIME
+	self.rebroadcasts = 0
 	PlayerState:ForEachParticipant(function(_, record) record.draftState = "BAN_HEROES" end)
 
 	if self.heroManager then
 		self.heroManager:LoadPool()
 	end
 
-	local pool = (self.heroManager and self.heroManager:LoadPool()) or {}
-	CustomGameEventManager:Send_ServerToAllClients("ai_lod_ban_start", {
-		time = BAN_TIME,
-		heroes = table.concat(pool, ","),
-		banned = table.concat(self.heroManager:GetBannedList(), ","),
-		locked = false,
-	})
+	self:BroadcastStart(true)
 
 	self.timer = Timers:CreateTimer(function()
 		if not self.active or self.finished then return nil end
 		self.timeLeft = math.max(0, math.ceil(self.deadline - Time()))
 		CustomGameEventManager:Send_ServerToAllClients("ai_lod_ban_timer", { time = self.timeLeft })
+		-- First few seconds: rebroadcast the ban panel so panorama that missed
+		-- the initial event (or failed the nettable snapshot) still opens it.
+		if self.rebroadcasts < 6 and (self.rebroadcasts == 0 or self.timeLeft % 1 == 0) then
+			self.rebroadcasts = self.rebroadcasts + 1
+			self:BroadcastStart(false)
+		end
 		if GameState.owner and GameState.owner.PublishRoster then GameState.owner:PublishRoster() end
 		if self.timeLeft <= 0 then
 			self:Finish()
@@ -142,11 +165,10 @@ function BanManager:SyncPlayer(playerID)
 	local player = PlayerResource:GetPlayer(playerID)
 	if not player then return end
 	local record = PlayerState and PlayerState:Get(playerID)
-	CustomGameEventManager:Send_ServerToPlayer(player, "ai_lod_ban_start", {
-		time = self.timeLeft,
-		heroes = table.concat(self.heroManager:LoadPool(), ","),
-		banned = table.concat(self.heroManager:GetBannedList(), ","),
-		picked = table.concat(record and record.bannedHeroes or {}, ","),
-		locked = self.playerBanned[playerID] == true,
+	local payload = self:BanStartPayload(self.playerBanned[playerID] == true)
+	payload.picked = table.concat(record and record.bannedHeroes or {}, ",")
+	CustomGameEventManager:Send_ServerToPlayer(player, "ai_lod_state", {
+		state = GameState.BAN, name = "BAN_HEROES",
 	})
+	CustomGameEventManager:Send_ServerToPlayer(player, "ai_lod_ban_start", payload)
 end

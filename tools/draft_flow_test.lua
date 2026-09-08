@@ -352,6 +352,8 @@ check(owner.botManager:TeamCount(DOTA_TEAM_GOODGUYS) == 5, "radiant full after r
 check(owner.botManager:TeamCount(DOTA_TEAM_BADGUYS) == 5, "dire full after reclaim")
 
 -- Native team-select countdown finishes setup then starts LOD lobby countdown.
+-- Bots are detected as empty seats during setup but only filled when the LOD
+-- lobby countdown ends — never during native hero selection.
 owner = setup(1)
 owner.fillEmptyWithBots = true
 fakeClients[0] = false
@@ -360,30 +362,33 @@ nativeState = DOTA_GAMERULES_STATE_CUSTOM_GAME_SETUP
 owner:OnGameRulesStateChange()
 check(owner.setupStarted, "custom game setup loop armed")
 advance(1)
-check(owner.botManager:TeamsFull(), "setup loop fills empty slots")
+check(not owner.botManager:TeamsFull(), "setup detects empty seats without spawning bots")
+check(owner.botManager:TeamCount(DOTA_TEAM_GOODGUYS) + owner.botManager:TeamCount(DOTA_TEAM_BADGUYS) == 1,
+	"only the human is present during setup")
+local detected = owner.botManager:PublishEmptySlots(owner)
+check(detected.total == 9, "nine empty seats published during setup")
 check(type(GameRules.setupRemaining) == "number" and GameRules.setupRemaining <= 10, "setup countdown published")
-advance(10)
+-- SETUP_COUNTDOWN is 10s from setupOpenedAt; after the first 1s tick, 9s remain.
+advance(9)
 check(GameRules.setupFinished == true, "setup countdown finishes custom game setup")
 check(nativeState == DOTA_GAMERULES_STATE_PRE_GAME, "engine advanced to pre-game")
-check(owner.flowStarted, "LOD lobby flow starts after setup")
--- A slot that empties mid-lobby is detected only when the countdown ends.
-owner.fillEmptyWithBots = false
-teams[1], players[1], entities[1001], fakeClients[1], connected[1] = nil, nil, nil, nil, nil
-PlayerState.players[1] = nil
-advance(7)
-check(not owner.botManager:TeamsFull(), "emptied slot stays open during the lobby countdown")
-check(not PlayerState:IsParticipant(1), "vacated seat is not a lobby participant yet")
-owner.fillEmptyWithBots = true
--- The countdown restarts when the roster signature changes; wait it out.
-advance(6)
-check(PlayerState:IsBot(1), "lobby countdown end fills the detected empty slot")
-check(owner.botManager:TeamsFull(), "both teams are full once the countdown ends")
+-- PRE_GAME defers BeginMatchFlow one tick so PauseGame can apply first.
+check(not owner.flowStarted, "LOD lobby waits one tick after PRE_GAME pause")
+advance(1)
+check(owner.flowStarted, "LOD lobby flow starts after pause tick")
+check(not owner.botManager:TeamsFull(), "bots still absent during LOD lobby countdown")
+check(owner.emptySlots and owner.emptySlots.total == 9, "lobby still reports detected empty seats")
+-- Auto-ready grace then lobby countdown, then deferred bot fill + BAN.
+advance(8)
 check(PlayerState:Get(0).lobbyReady == true and PlayerState:Get(0).clientReady == true,
 	"lobby auto-ready without UI after grace")
 advance(5)
-phase(GameState.BAN, "lobby countdown starts the ban phase")
+check(PlayerState:IsBot(1), "lobby countdown end fills the first detected empty slot")
+check(owner.botManager:TeamsFull(), "both teams are full once the countdown ends")
+phase(GameState.BAN, "lobby countdown starts the ban phase after bot fill")
 check(owner.banManager.active == true, "ban phase is live before any bot hero lock")
 check(events.ai_lod_ban_start ~= nil, "ban UI payload published before hero draft")
+check(events.ai_lod_state and events.ai_lod_state.name == "BAN_HEROES", "ban state event published for UI")
 -- Bots must not lock a base hero during BAN.
 PlayerState:ForEachParticipant(function(id, record)
 	if PlayerState:IsBot(id) then
@@ -433,6 +438,7 @@ local function lifecycle(seed, repair)
 	random:Init(999)
 	random:Int(1, 100)
 	tools = true
+	mode.draftPause = true
 	mode:BeginMatchFlow()
 	advance(2)
 	PlayerState:Get(0).lobbyReady = false
@@ -551,6 +557,7 @@ local function fallbackLifecycle(seed)
 	random:Init(999)
 	random:Int(1, 100)
 	tools = true
+	mode.draftPause = true
 	mode:BeginMatchFlow()
 	advance(9)
 	phase(GameState.BAN)
@@ -589,15 +596,24 @@ end
 
 owner = setup(1)
 gamePaused = true
+owner.draftPause = true
 addPlayer(1, 3)
 CreateHeroForPlayer("npc_dota_hero_axe", players[1])
 owner:EnforcePlaceholderHeroes()
 check(heroes[1] ~= nil and heroes[1]:GetUnitName() == "npc_dota_hero_wisp",
 	"paused sweep strips a pre-draft real hero back to placeholder")
-CreateHeroForPlayer("npc_dota_hero_axe", players[1])
+CreateHeroForPlayer("npc_dota_hero_kunkka", players[1])
+-- draftPause must still strip even if the engine pause flag lags one tick.
 gamePaused = false
+owner.draftPause = true
 owner:EnforcePlaceholderHeroes()
-check(heroes[1]:GetUnitName() == "npc_dota_hero_axe",
+check(heroes[1] ~= nil and heroes[1]:GetUnitName() == "npc_dota_hero_wisp",
+	"draftPause strips pre-draft heroes when IsGamePaused lags")
+CreateHeroForPlayer("npc_dota_hero_razor", players[1])
+gamePaused = false
+owner.draftPause = false
+owner:EnforcePlaceholderHeroes()
+check(heroes[1]:GetUnitName() == "npc_dota_hero_razor",
 	"live pre-draft entities are never replaced outside the pause")
 
 local fallbackHero = fallbackLifecycle(777)
