@@ -74,7 +74,9 @@ local SETUP_COUNTDOWN = 10     -- native team-select countdown → FinishCustomG
 local LOBBY_COUNTDOWN = 5      -- LOD lobby countdown → BAN_HEROES
 ```
 
-**Playable lobby path:** custom game setup auto-assigns unassigned humans/bots onto Radiant/Dire, fills remaining slots with hard AI bots, shows a 10s setup countdown, launches through a zero-length native hero-selection window (forced placeholder `wisp` only — no real auto-picks), then PRE_GAME runs the 5s LOD lobby countdown (auto-ready if the UI never reports ready) **before BAN_HEROES**. Bots only ban/pick after each LOD phase is live; they never lock a base hero before bans.
+**Playable lobby path:** custom game setup auto-assigns unassigned humans/bots onto Radiant/Dire, fills remaining slots with hard AI bots, shows a 10s setup countdown, launches through a short native hero-selection window (forced placeholder `wisp` only — no real auto-picks; engine clocks stay unpaused so the match can reach PRE_GAME), then PRE_GAME runs the 5s LOD lobby countdown (auto-ready if the UI never reports ready) **before BAN_HEROES**. Bots only ban/pick after each LOD phase is live; they never lock a base hero before bans.
+
+**Required engine files:** `scripts/custom_net_tables.txt` must use modern **KV3** list form (`custom_net_tables = [ "ai_lod_match" ]`). Old KV1 `"ai_lod_match" "1"` blocks are ignored by current Dota clients, which leaves the draft UI blank (`Unknown custom nettable 'ai_lod_match'`). After pulling updates, re-run `install.bat` / `install.sh` so Workshop Tools picks up the new file.
 
 ## Roadmap
 

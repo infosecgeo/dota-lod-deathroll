@@ -85,13 +85,15 @@ function AILODGameMode:SetupGameRules()
 	if GameRules.SetCustomGameSetupRemainingTime then
 		GameRules:SetCustomGameSetupRemainingTime(SETUP_COUNTDOWN)
 	end
-	GameRules:SetStrategyTime(0)
-	GameRules:SetShowcaseTime(0)
+	-- Use 1s (not 0): some engine builds treat 0 as "wait forever" and never
+	-- leave native hero selection when combined with ForceHero placeholders.
+	GameRules:SetStrategyTime(self.enableLodDraft and 1 or 0)
+	GameRules:SetShowcaseTime(self.enableLodDraft and 1 or 0)
 	GameRules:SetPostGameTime(30)
 	GameRules:SetTreeRegrowTime(60)
 	GameRules:SetUseUniversalShopMode(true)
 	GameRules:SetSameHeroSelectionEnabled(true)
-	GameRules:SetHeroSelectionTime(self.enableLodDraft and 0 or 30)
+	GameRules:SetHeroSelectionTime(self.enableLodDraft and 1 or 30)
 	GameRules:SetHeroSelectPenaltyTime(self.enableLodDraft and 0 or 5)
 	-- This clock is server-paused throughout readiness/drafting/kit creation.
 	-- Only the bounded 15 + 5 second presentation consumes pregame time.
@@ -99,7 +101,7 @@ function AILODGameMode:SetupGameRules()
 	local mode = GameRules:GetGameModeEntity()
 	-- LOD owns the final base hero after BAN → draft. Force a shared placeholder
 	-- so the engine cannot auto-assign real heroes (or bot picks) during the
-	-- zero-length native hero-selection window before PRE_GAME bans start.
+	-- short native hero-selection window before PRE_GAME bans start.
 	if self.enableLodDraft and mode.SetCustomGameForceHero then
 		mode:SetCustomGameForceHero(PLACEHOLDER_HERO)
 	end
@@ -294,10 +296,12 @@ function AILODGameMode:OnGameRulesStateChange()
 			or (DOTA_GAMERULES_STATE_STRATEGY_TIME and state == DOTA_GAMERULES_STATE_STRATEGY_TIME)
 			or (DOTA_GAMERULES_STATE_TEAM_SHOWCASE and state == DOTA_GAMERULES_STATE_TEAM_SHOWCASE)
 		) then
-		-- Native selection is a zero-length placeholder window when LOD draft is on.
-		-- Keep the world frozen; real bans/picks happen only after PRE_GAME lobby.
-		self.draftPause = true
-		PauseGame(true)
+		-- Native selection is a short placeholder window when LOD draft is on.
+		-- Do NOT PauseGame here: pausing freezes the engine clock and traps the
+		-- match in HERO_SELECTION forever (blank map, no LOD lobby UI).
+		-- Real bans/picks still wait until PRE_GAME via BeginMatchFlow.
+		self.draftPause = false
+		self:EnsureNativeSelectionAdvances(state)
 	elseif state == DOTA_GAMERULES_STATE_PRE_GAME then
 		self.draftPause = true
 		PauseGame(true)
@@ -315,6 +319,44 @@ function AILODGameMode:OnGameRulesStateChange()
 			self:AbortPreparation("unexpected_engine_start")
 		end
 	end
+end
+
+function AILODGameMode:EnsureNativeSelectionAdvances(state)
+	-- Force-hero + short selection should pass quickly. If the engine stalls
+	-- (placeholder bots / econ inventory noise), keep clocks short and unpaused.
+	if self.nativeAdvanceArmed or self.ended then return end
+	self.nativeAdvanceArmed = true
+	local openedAt = Time()
+	Timers:CreateTimer(function()
+		if self.ended then return end
+		local now = GameRules:State_Get()
+		if now == DOTA_GAMERULES_STATE_PRE_GAME
+			or now == DOTA_GAMERULES_STATE_GAME_IN_PROGRESS
+			or (DOTA_GAMERULES_STATE_POST_GAME and now >= DOTA_GAMERULES_STATE_POST_GAME) then
+			self.nativeAdvanceArmed = false
+			return
+		end
+		local inNative = now == DOTA_GAMERULES_STATE_HERO_SELECTION
+			or (DOTA_GAMERULES_STATE_STRATEGY_TIME and now == DOTA_GAMERULES_STATE_STRATEGY_TIME)
+			or (DOTA_GAMERULES_STATE_TEAM_SHOWCASE and now == DOTA_GAMERULES_STATE_TEAM_SHOWCASE)
+		if not inNative then
+			self.nativeAdvanceArmed = false
+			return
+		end
+		-- Never leave the match paused during native selection windows.
+		if GameRules.IsGamePaused and GameRules:IsGamePaused() then
+			PauseGame(false)
+		end
+		pcall(function() GameRules:SetHeroSelectionTime(1) end)
+		pcall(function() GameRules:SetStrategyTime(1) end)
+		pcall(function() GameRules:SetShowcaseTime(1) end)
+		-- After several seconds still stuck, log once and keep retrying unpause.
+		if Time() >= openedAt + 3 then
+			print(string.format("[AI-LOD] Waiting on native state %s (expect PRE_GAME next)", tostring(now)))
+			openedAt = Time()
+		end
+		return 0.5
+	end, false)
 end
 
 function AILODGameMode:StartCustomGameSetup()
@@ -510,8 +552,12 @@ function AILODGameMode:OnLobbyReady(playerID, event)
 end
 
 function AILODGameMode:HoldUnit(unit)
-	if unit and not unit:IsNull() then
+	if not unit or unit:IsNull() then return end
+	if not unit.IsRealHero or not unit:IsRealHero() then return end
+	local ok = pcall(function()
 		unit:AddNewModifier(unit, nil, "modifier_ai_lod_preparation", {})
+	end)
+	if ok then
 		self.heldUnits[unit:entindex()] = unit
 	end
 end
@@ -779,15 +825,18 @@ function AILODGameMode:OnPlayerPickHero(event)
 	local hero = EntIndexToHScript(event.heroindex)
 	if not hero or hero:IsNull() or self.ended then return end
 	if not self.enableLodDraft then PlayerState:SetHero(hero:GetPlayerOwnerID(), hero:GetUnitName()) end
-	if not GameState:Is(GameState.PLAYING) then self:HoldUnit(hero) end
+	if not GameState:Is(GameState.PLAYING) and hero.IsRealHero and hero:IsRealHero() then
+		self:HoldUnit(hero)
+	end
 end
 
 function AILODGameMode:OnNPCSpawned(event)
 	local unit = EntIndexToHScript(event.entindex)
 	if not unit or unit:IsNull() or self.ended then return end
+	if not unit.IsRealHero or not unit:IsRealHero() then return end
 	if not GameState:Is(GameState.PLAYING) then
 		self:HoldUnit(unit)
-	elseif unit:IsRealHero() then
+	else
 		self.respawnManager:OnHeroSpawn(unit)
 	end
 end
