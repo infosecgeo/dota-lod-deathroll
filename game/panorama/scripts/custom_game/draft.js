@@ -240,6 +240,8 @@ GameEvents.Subscribe("ai_lod_playing", function () {
 });
 
 GameEvents.Subscribe("ai_lod_ban_start", function (event) {
+	// Phase-start events are authoritative even if ai_lod_state was missed.
+	SetDraftState({ name: "BAN_HEROES" }, false);
 	if (!Enter("BAN_HEROES")) return;
 	RenderBans(SplitList(event.banned));
 	var parent = Clear("#BanAbilityList");
@@ -264,6 +266,11 @@ GameEvents.Subscribe("ai_lod_hero_banned", function (event) {
 });
 
 function RenderHeroOffers(event) {
+	// Never open hero select from LOBBY/BAN. draft_start may promote into this phase;
+	// stale offers during later phases stay rejected by Enter().
+	if (currentState === "GENERATE_HERO_POOLS" || currentState === "SELECT_BASE_HERO") {
+		if (currentState !== "SELECT_BASE_HERO") SetDraftState({ name: "SELECT_BASE_HERO" }, false);
+	}
 	if (!Enter("SELECT_BASE_HERO")) return;
 	var parent = Clear("#HeroCategories");
 	["strength", "agility", "intelligence"].forEach(function (key, index) {
@@ -376,6 +383,7 @@ $("#BuildConfirmBtn").SetPanelEvent("onactivate", function () { Send("ai_lod_con
 	["ai_lod_build", "BUILD_CONFIRMATION", "#BuildTimer", null, "_confirmation_end"]
 ].forEach(function (spec) {
 	if (spec[3] && spec[0] !== "ai_lod_ban") GameEvents.Subscribe(spec[0] + spec[3], function (event) {
+		SetDraftState({ name: spec[1] }, false);
 		if (Enter(spec[1])) Timer(spec[2], event);
 	});
 	GameEvents.Subscribe("ai_lod_initial_ult_draft_end", function () { End("INITIAL_ULTIMATE"); });

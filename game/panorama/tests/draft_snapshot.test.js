@@ -66,6 +66,20 @@ assert.equal(panels.LobbyDire.children.length, 5);
 click(panels.LobbyReadyBtn);
 assert.equal(sent.at(-1).name, "ai_lod_lobby_ready");
 assert.equal(sent.at(-1).data.ready, true);
+// Ban start is authoritative even if the state event was dropped.
+vm.runInContext('currentState = "LOBBY";', context);
+emit("ai_lod_ban_start", {
+	time: 50,
+	heroes: "npc_dota_hero_axe,npc_dota_hero_lina",
+	banned: "",
+	locked: false
+});
+assert.ok(shown("BanPhase"), "ban panel opens from ban_start");
+assert.ok(!shown("HeroSelect"), "hero select stays closed during ban");
+assert.equal(panels.BanAbilityList.children.length, 2);
+emit("ai_lod_hero_offers", { strength: "axe" });
+assert.ok(shown("BanPhase"), "hero offers cannot skip the ban phase");
+assert.ok(!shown("HeroSelect"), "ban must complete before hero select");
 state("SELECT_BASE_HERO");
 emit("ai_lod_roster", { players: [], banned: "npc_dota_hero_lina,npc_dota_hero_zeus" });
 assert.equal(panels.BannedPortraits.children.length, 2, "Roster snapshots restore bans after reconnect");

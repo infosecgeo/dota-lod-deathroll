@@ -4,6 +4,9 @@
 BanManager = BanManager or class({})
 
 local BAN_TIME = 50
+-- Keep BAN_HEROES on screen long enough for the panel to open before an
+-- all-ready early finish (bots ban quickly once the phase is live).
+local BAN_MIN_VISIBLE = 5
 
 function BanManager:constructor(heroManager)
 	self.heroManager = heroManager
@@ -23,6 +26,7 @@ function BanManager:Start(onComplete)
 	self.playerBanned = {}
 	self.timeLeft = BAN_TIME
 	self.active = true
+	self.startedAt = Time()
 	self.deadline = Time() + BAN_TIME
 	PlayerState:ForEachParticipant(function(_, record) record.draftState = "BAN_HEROES" end)
 
@@ -47,8 +51,26 @@ function BanManager:Start(onComplete)
 			self:Finish()
 			return nil
 		end
-		return 1
+		if self:AllParticipantsBanned() and self:MinVisibleElapsed() then
+			self:Finish()
+			return nil
+		end
+		return 0.25
 	end, false)
+end
+
+function BanManager:MinVisibleElapsed()
+	return self.startedAt ~= nil and Time() >= (self.startedAt + BAN_MIN_VISIBLE)
+end
+
+function BanManager:AllParticipantsBanned()
+	local pending = false
+	if PlayerState then
+		PlayerState:ForEachParticipant(function(pid, _)
+			if not self.playerBanned[pid] then pending = true end
+		end)
+	end
+	return not pending
 end
 
 function BanManager:HandleBan(playerID, heroName)
@@ -76,14 +98,9 @@ function BanManager:HandleBan(playerID, heroName)
 	self:SyncPlayer(playerID)
 	if GameState.owner and GameState.owner.PublishRoster then GameState.owner:PublishRoster() end
 
-	-- Disconnected participants retain their slot until the server deadline.
-	local pending = false
-	if PlayerState then
-		PlayerState:ForEachParticipant(function(pid, _)
-			if not self.playerBanned[pid] then pending = true end
-		end)
-	end
-	if not pending then
+	-- Early finish only after the ban panel has had time to appear. Bots alone
+	-- must never collapse BAN_HEROES into hero select before humans see it.
+	if self:AllParticipantsBanned() and self:MinVisibleElapsed() then
 		self:Finish()
 	end
 end
