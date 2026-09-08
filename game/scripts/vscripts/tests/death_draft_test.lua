@@ -55,6 +55,7 @@ local function reset(respawnTime)
 		IsRealHero = function() return true end,
 		IsAlive = function(self) return self.alive end,
 		GetPlayerOwnerID = function() return 0 end,
+		GetUnitName = function() return "npc_dota_hero_axe" end,
 		GetTimeUntilRespawn = function() return respawnTime or 40 end,
 		SetTimeUntilRespawn = function() error("Death drafting must not change respawn time") end,
 	}
@@ -74,11 +75,11 @@ local function reset(respawnTime)
 		end,
 		ApplyDraftChanges = function(self)
 			self.applyCount = self.applyCount + 1
+			if not self.fail then self.commitCount = self.commitCount + 1 end
 			return not self.fail, "invalid_kit"
 		end,
-		CommitBuild = function(self)
-			self.commitCount = self.commitCount + 1
-			return true
+		PrecacheBuild = function(self, _, _, _, _, callback)
+			if self.async then self.loaded = callback else callback(true) end
 		end,
 	}
 	manager = RespawnManager(abilities)
@@ -137,6 +138,42 @@ abilities.fail = true
 manager:HandleDeathConfirm(0, session.draftId)
 assert(manager.pending[0] and session.error == "invalid_kit")
 assert(record.abilities.basic[1] == "a" and abilities.commitCount == 0)
+
+session = reset()
+stage()
+abilities.async = true
+manager:HandleDeathConfirm(0, session.draftId)
+assert(session.precaching and abilities.applyCount == 0)
+manager:HandleDeathReroll(0, session.draftId)
+manager:HandleDeathSelectAbility(0, "e", session.draftId)
+assert(record.rerolls.respawn == 3 and session.candidate.basic[1] == "d")
+manager:HandleDeathSkip(0, session.draftId)
+abilities.loaded(true)
+assert(not manager.pending[0] and abilities.applyCount == 0, "Late precache cannot bypass skip")
+
+session = reset()
+stage()
+abilities.async = true
+manager:HandleDeathConfirm(0, session.draftId)
+now = 26
+abilities.loaded(true)
+assert(not manager.pending[0] and abilities.applyCount == 0, "Late precache cannot bypass timeout")
+
+session = reset()
+stage()
+abilities.async = true
+manager:HandleDeathConfirm(0, session.draftId)
+abilities.taken.d = true
+abilities.loaded(true)
+assert(session.error == "ability_taken" and abilities.applyCount == 0)
+
+session = reset()
+stage()
+abilities.async = true
+manager:HandleDeathConfirm(0, session.draftId)
+abilities.loaded(false, "precache_failed")
+assert(session.error == "precache_failed" and not session.precaching)
+assert(record.abilities.basic[1] == "a" and abilities.applyCount == 0)
 
 session = reset()
 local oldToken = session.draftId

@@ -72,6 +72,14 @@
 			<Label id="PreparationTimer" class="Timer" />
 			<Label id="PreparationHint" class="PhaseHint" />
 			<Panel id="StrategyBuild" class="BuildStrip" />
+			<Label id="StrategyGold" class="PhaseHint" />
+			<Panel id="StrategyLanes" class="LaneChoices">
+				<Label text="#ai_lod_lane" class="LaneHeading" />
+				<Button id="LaneTop" class="SmallButton"><Label text="#ai_lod_lane_top" /></Button>
+				<Button id="LaneMid" class="SmallButton"><Label text="#ai_lod_lane_mid" /></Button>
+				<Button id="LaneBottom" class="SmallButton"><Label text="#ai_lod_lane_bottom" /></Button>
+				<Button id="LaneJungle" class="SmallButton"><Label text="#ai_lod_lane_jungle" /></Button>
+			</Panel>
 			<Panel id="IntroductionPlayers" class="TeamColumns" />
 			<Button id="StrategyReadyBtn" class="GoldButton"><Label text="#ai_lod_strategy_ready" /></Button>
 		</Panel>
@@ -89,6 +97,7 @@
 			<Panel id="DeathBasicOffers" class="AbilityGrid" /><Panel id="DeathUltimateOffers" class="AbilityGrid" />
 			<Label id="DeathEmpty" text="#ai_lod_no_replacements" class="PhaseHint" />
 			<Label text="#ai_lod_death_timeout" class="PhaseHint" />
+			<Label id="DeathLoading" text="#ai_lod_loading_resources" class="PhaseHint" />
 			<Label id="DeathDraftError" class="Error" /><Label id="DeathRerolls" class="PhaseHint" />
 			<Panel class="DeathActions">
 				<Button id="DeathKeepSlotBtn" class="SmallButton"><Label text="#ai_lod_keep_slot" /></Button>

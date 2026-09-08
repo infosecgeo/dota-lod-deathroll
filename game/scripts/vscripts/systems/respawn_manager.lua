@@ -144,6 +144,7 @@ function RespawnManager:SendDeathDraft(playerID)
 		pending_ultimate = table.concat(s.candidate.ultimate, ","),
 		selected_slot = s.selectedSlot or "",
 		error = s.error or "",
+		loading = s.precaching == true,
 		rerolls = record.rerolls.respawn,
 		time = math.max(0, math.ceil(s.expiresAt - GameRules:GetGameTime())),
 	})
@@ -165,7 +166,7 @@ end
 
 function RespawnManager:HandleDeathSelectSlot(playerID, slotName, draftId)
 	local s = self:GetSession(playerID, draftId)
-	if not s or type(slotName) ~= "string" then return end
+	if not s or s.precaching or type(slotName) ~= "string" then return end
 	for _, kind in ipairs({ "basic", "ultimate" }) do
 		if Contains(s.slots[kind], slotName) then
 			s.selectedSlot, s.selectedKind = slotName, kind
@@ -178,7 +179,7 @@ end
 
 function RespawnManager:HandleDeathSelectAbility(playerID, abilityName, draftId)
 	local s = self:GetSession(playerID, draftId)
-	if not s or not s.selectedKind or type(abilityName) ~= "string"
+	if not s or s.precaching or not s.selectedKind or type(abilityName) ~= "string"
 		or (abilityName ~= s.selectedSlot
 			and not Contains(s.offers[s.selectedKind], abilityName)) then return end
 	local index
@@ -203,7 +204,7 @@ end
 
 function RespawnManager:HandleDeathReroll(playerID, draftId)
 	local s = self:GetSession(playerID, draftId)
-	if not s then return end
+	if not s or s.precaching then return end
 	local record = PlayerState:Get(playerID)
 	if self.rerollManager then
 		if not self.rerollManager:Consume(playerID, "respawn") then return end
@@ -220,7 +221,29 @@ function RespawnManager:HandleDeathReroll(playerID, draftId)
 end
 
 function RespawnManager:HandleDeathConfirm(playerID, draftId)
-	if self:GetSession(playerID, draftId) then self:FinishDeathDraft(playerID, false, false) end
+	local s = self:GetSession(playerID, draftId)
+	if not s or s.precaching then return end
+	if Same(s.candidate.basic, s.slots.basic) and Same(s.candidate.ultimate, s.slots.ultimate) then
+		self:FinishDeathDraft(playerID, false, false)
+		return
+	end
+	s.precaching = true
+	s.error = nil
+	self:SendDeathDraft(playerID)
+	local token = s.draftId
+	self.abilityManager:PrecacheBuild(s.hero:GetUnitName(), Copy(s.candidate.basic),
+		Copy(s.candidate.ultimate), playerID, function(ok, reason)
+			if self.pending[playerID] ~= s or s.draftId ~= token then return end
+			s.precaching = false
+			if not self:GetSession(playerID, token) then return end
+			if not ok then
+				s.error = reason or "precache_failed"
+				self:SendDeathDraft(playerID)
+				return
+			end
+			-- Loading can outlive a choice elsewhere: Finish checks ownership again.
+			self:FinishDeathDraft(playerID, false, false)
+		end)
 end
 
 function RespawnManager:HandleDeathSkip(playerID, draftId)
@@ -267,7 +290,6 @@ function RespawnManager:FinishDeathDraft(playerID, timedOut, cancelled)
 				self:SendDeathDraft(playerID)
 				return false
 			end
-			self.abilityManager:CommitBuild(playerID, s.candidate.basic, s.candidate.ultimate)
 		end
 		record.abilities = { basic = Copy(s.candidate.basic), ultimate = Copy(s.candidate.ultimate) }
 	end

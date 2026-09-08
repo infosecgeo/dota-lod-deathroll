@@ -15,6 +15,7 @@ var lobbySnapshot = null;
 var deathDraftID = null;
 var deathSlot = null;
 var noticeVersion = 0;
+var lanes = { top: "#LaneTop", mid: "#LaneMid", bottom: "#LaneBottom", jungle: "#LaneJungle" };
 var phasePanels = {
 	LOBBY: "Lobby", BAN_HEROES: "BanPhase", SELECT_BASE_HERO: "HeroSelect",
 	ABILITY_DRAFT: "AbilityDraft", INITIAL_ULTIMATE: "InitialUltDraft",
@@ -34,6 +35,12 @@ function L(key) {
 	var token = "#ai_lod_" + key;
 	var localized = $.Localize(token);
 	return localized !== token ? localized : key.replace(/^(state|status|error)_/, "").replace(/_/g, " ");
+}
+function ErrorText(reason) {
+	if (!reason) return "";
+	var token = "#ai_lod_error_" + reason;
+	var localized = $.Localize(token);
+	return localized !== token ? localized : L("error_invalid_build");
 }
 function IsTrue(value) { return value === true || value === 1 || value === "1"; }
 function SplitList(value) {
@@ -162,6 +169,7 @@ function RenderRosterRows(parent, players, team, slots) {
 		Text(details, player ? PlayerName(player.player_id) : L("open_slot"), "RosterName");
 		var status = !player ? "—" : IsTrue(player.ready) ? L("ready")
 			: player.draft_state ? L("state_" + Canonical(player.draft_state).toLowerCase()) : L("waiting");
+		if (player && lanes[player.lane]) status = L("lane_" + player.lane) + " · " + status;
 		if (player && player.basic_count != null) status += "\n" + player.basic_count + "/3 + " + (player.ultimate_count || 0) + "/2";
 		Text(details, status, "RosterStatus");
 		if (player) row.SetHasClass("LocalPlayer", Number(player.player_id) === Players.GetLocalPlayer());
@@ -199,7 +207,7 @@ function RenderLobby(event) {
 }
 GameEvents.Subscribe("ai_lod_lobby", RenderLobby);
 GameEvents.Subscribe("ai_lod_roster", RenderRoster);
-$("#LobbyReadyBtn").SetPanelEvent("onactivate", function () { Send("ai_lod_lobby_ready"); });
+$("#LobbyReadyBtn").SetPanelEvent("onactivate", function () { Send("ai_lod_lobby_ready", { ready: true }); });
 $("#LobbyReadyBtn").enabled = false;
 
 function SetDraftState(event, fromSnapshot) {
@@ -347,7 +355,7 @@ GameEvents.Subscribe("ai_lod_build_confirmation", function (event) {
 	if (!Enter("BUILD_CONFIRMATION")) return;
 	UpdateBuild({ hero: event.hero, picked_basic: event.basic, picked_ultimate: event.ultimate });
 	RenderBuild("#FinalBuild", selectedHero, selectedBasics, selectedUltimates, false);
-	$("#BuildError").text = event.error ? L("error_" + event.error) : IsTrue(event.locked) ? L("locked") : "";
+	$("#BuildError").text = event.error ? ErrorText(event.error) : IsTrue(event.locked) ? L("locked") : "";
 	$("#BuildConfirmBtn").enabled = !IsTrue(event.locked) && selectedBasics.length === 3 && selectedUltimates.length === 2;
 	Timer("#BuildTimer", event);
 });
@@ -382,6 +390,7 @@ GameEvents.Subscribe("ai_lod_death_draft", function (event) {
 	var ultimates = SplitList(event.ultimate_slots);
 	var pendingBasic = SplitList(event.pending_basic);
 	var pendingUlt = SplitList(event.pending_ultimate);
+	var loading = IsTrue(event.loading);
 	var isBasic = basics.indexOf(deathSlot) !== -1;
 	var isUlt = ultimates.indexOf(deathSlot) !== -1;
 	var staged = false;
@@ -390,7 +399,7 @@ GameEvents.Subscribe("ai_lod_death_draft", function (event) {
 		originals.forEach(function (ability, index) {
 			var replacement = pending[index] || ability;
 			staged = staged || replacement !== ability;
-			var button = AbilityCard(parent, replacement, true, deathSlot === ability, function () {
+			var button = AbilityCard(parent, replacement, !loading, deathSlot === ability, function () {
 				Send("ai_lod_death_slot", { slot: ability, draft_id: deathDraftID });
 			});
 			button.SetHasClass("Staged", replacement !== ability);
@@ -400,7 +409,7 @@ GameEvents.Subscribe("ai_lod_death_draft", function (event) {
 		var parent = Clear(id);
 		parent.visible = enabled;
 		choices.forEach(function (ability) {
-			AbilityCard(parent, ability, enabled && pendingBasic.concat(pendingUlt).indexOf(ability) === -1, false, function () {
+			AbilityCard(parent, ability, enabled && !loading && pendingBasic.concat(pendingUlt).indexOf(ability) === -1, false, function () {
 				Send("ai_lod_death_ability", { ability: ability, draft_id: deathDraftID });
 			});
 		});
@@ -415,10 +424,12 @@ GameEvents.Subscribe("ai_lod_death_draft", function (event) {
 	$("#DeathEmpty").visible = isBasic ? basicOffers.length === 0 : isUlt ? ultOffers.length === 0 : !basicOffers.length && !ultOffers.length;
 	var rerolls = Number(event.rerolls || 0);
 	$("#DeathRerolls").text = L("shared_rerolls") + ": " + rerolls + "/3";
-	$("#DeathRerollBtn").enabled = rerolls > 0;
-	$("#DeathKeepSlotBtn").enabled = isBasic || isUlt;
-	$("#DeathConfirmBtn").enabled = staged;
-	$("#DeathDraftError").text = event.error ? L("error_" + event.error) : "";
+	$("#DeathRerollBtn").enabled = rerolls > 0 && !loading;
+	$("#DeathKeepSlotBtn").enabled = (isBasic || isUlt) && !loading;
+	$("#DeathConfirmBtn").enabled = staged && !loading;
+	$("#DeathSkipBtn").enabled = true;
+	$("#DeathLoading").visible = loading;
+	$("#DeathDraftError").text = ErrorText(event.error);
 	Timer("#DeathTimer", event);
 });
 GameEvents.Subscribe("ai_lod_death_timer", function (event) {
@@ -459,13 +470,28 @@ function RenderPreparation(event) {
 	$("#PreparationHint").text = L(strategy ? "strategy_hint" : "preparation_hint");
 	Timer("#PreparationTimer", event);
 	$("#StrategyReadyBtn").visible = strategy;
+	$("#StrategyLanes").visible = strategy;
 	var ready = typeof event.ready === "object" && event.ready !== null ? event.ready[String(Players.GetLocalPlayer())] : event.ready;
 	$("#StrategyReadyBtn").enabled = strategy && !IsTrue(ready);
 	var players = TableRows(event.players || (rosterSnapshot && rosterSnapshot.players));
+	var localPlayer = null;
 	players.forEach(function (player) {
-		if (Number(player.player_id) === Players.GetLocalPlayer()) UpdateBuild({
-			hero: player.hero, picked_basic: player.basic, picked_ultimate: player.ultimate
-		});
+		if (Number(player.player_id) === Players.GetLocalPlayer()) {
+			localPlayer = player;
+			UpdateBuild({
+				hero: player.hero,
+				picked_basic: player.basic != null ? player.basic : player.abilities && player.abilities.basic,
+				picked_ultimate: player.ultimate != null ? player.ultimate : player.abilities && player.abilities.ultimate
+			});
+		}
+	});
+	$("#StrategyGold").visible = strategy && !!localPlayer && (localPlayer.starting_gold != null || localPlayer.gold != null);
+	$("#StrategyGold").text = !localPlayer ? "" : L("starting_gold") + ": "
+		+ (localPlayer.starting_gold != null ? localPlayer.starting_gold : "—") + " · " + L("available_gold") + ": "
+		+ (localPlayer.gold != null ? localPlayer.gold : "—");
+	Object.keys(lanes).forEach(function (lane) {
+		$(lanes[lane]).enabled = strategy && !!localPlayer;
+		$(lanes[lane]).SetHasClass("Selected", !!localPlayer && localPlayer.lane === lane);
 	});
 	RenderBuild("#StrategyBuild", selectedHero, selectedBasics, selectedUltimates, false);
 	var parent = Clear("#IntroductionPlayers");
@@ -480,6 +506,12 @@ function RenderPreparation(event) {
 }
 GameEvents.Subscribe("ai_lod_preparation", RenderPreparation);
 $("#StrategyReadyBtn").SetPanelEvent("onactivate", function () { Send("ai_lod_strategy_ready"); });
+Object.keys(lanes).forEach(function (lane) {
+	$(lanes[lane]).enabled = false;
+	$(lanes[lane]).SetPanelEvent("onactivate", function () {
+		if (currentState === "STRATEGY_TIME") Send("ai_lod_strategy_lane", { lane: lane });
+	});
+});
 
 function RenderResults(event) {
 	if (!event) return;

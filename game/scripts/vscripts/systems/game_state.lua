@@ -188,8 +188,6 @@ function GameState:Transition(toState, payload)
 	}
 	CustomNetTables:SetTableValue("ai_lod_match", "state", statePayload)
 	CustomGameEventManager:Send_ServerToAllClients("ai_lod_state", statePayload)
-	if self.owner and self.owner.PublishRoster then self.owner:PublishRoster() end
-
 	local cbs = self.listeners[toState]
 	if cbs then
 		for _, cb in ipairs(cbs) do
@@ -200,6 +198,7 @@ function GameState:Transition(toState, payload)
 			end
 		end
 	end
+	if self.owner and self.owner.PublishRoster then self.owner:PublishRoster() end
 
 	return true
 end

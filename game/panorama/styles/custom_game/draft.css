@@ -68,13 +68,17 @@ Button.Selected:disabled { opacity: 1; saturation: 1; }
 .LobbyTeam { width: fill-parent-flow(1); flow-children: down; margin: 0px 20px; }
 .PlayerList { flow-children: down; width: 100%; }
 .LobbyTeam .RosterRow { height: 62px; }
-.PreparationPanel { width: 760px; max-height: 550px; vertical-align: top; margin-top: 95px; padding: 12px; }
+.PreparationPanel { width: 760px; max-height: 620px; vertical-align: top; margin-top: 95px; padding: 12px; }
 .PreparationPanel .PhaseTitle { font-size: 23px; }
 .PreparationPanel .Timer { font-size: 30px; }
 .PreparationPanel .BuildSlot { height: 80px; }
 .PreparationPanel .AbilityIcon { width: 44px; height: 44px; }
 .PreparationPanel .RosterRow { height: 42px; }
 .PreparationPanel .HeroPortrait { width: 50px; height: 30px; }
+.LaneChoices { flow-children: right; horizontal-align: center; }
+.LaneHeading { vertical-align: center; font-size: 14px; color: #b6c5ce; margin-right: 8px; }
+.LaneChoices .SmallButton { padding: 5px 14px; margin: 5px 3px; }
+.LaneChoices Label { font-size: 14px; }
 .PreparationPanel.Introduction { width: 1060px; max-height: 800px; vertical-align: center; margin-top: 0px; }
 .Introduction .RosterRow { height: 88px; }
 .Introduction .HeroPortrait { width: 104px; height: 60px; }

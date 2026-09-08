@@ -163,7 +163,7 @@ Installer copies `game/` → `dota 2 beta/game/dota_addons/dota-lod-deathroll/`.
 
 Strategy and introduction are **custom HUD phases in engine PRE_GAME**, not the native hero-selection screens shown in the reference. The server pauses the engine clock during readiness and drafting; their countdowns use real time. Once final heroes and kits exist, shopping is unpaused for up to **15 seconds**, followed by a **5-second** introduction. Combat and movement remain blocked until gameplay. The normal HUD shop and minimap remain available; starting items are purchased manually, not granted automatically.
 
-UI readiness has a **15-second** grace period. Disconnected players do not block readiness/strategy indefinitely; draft timeouts complete their kits and the UI requests a fresh snapshot on load. Hero preparation retries for up to **30 seconds**; an unrecoverable failure ends setup without awarding either team victory.
+The lobby requires ready participants and both teams in normal games; Workshop Tools permits solo testing. The roster locks when drafting starts. Disconnected draft participants retain their records, draft timeouts complete their choices, and the UI requests a fresh snapshot on load. Hero preparation retries for up to **30 seconds**; an unrecoverable failure ends setup without awarding either team victory.
 
 Death drafts last **up to 25 seconds or the remaining normal respawn time, whichever is shorter**, and respect gameplay pauses. They neither delay nor accelerate respawn. Buyback is blocked only while a death draft is pending; skipping closes it immediately.
 
@@ -204,6 +204,22 @@ These require **Dota 2 Workshop Tools**; source syntax checks alone cannot verif
 …
 [GameState] GAME_START -> GAME
 ```
+
+### Developer checks
+
+In Workshop Tools, set `ai_lod_seed` to a nonzero integer in the lobby before readying up. The same seed, roster, and ordered player actions reproduce draft draws; this does not make Dota combat or network event arrival deterministic.
+
+Tools-only chat commands `!state`, `!draft`, `!reroll`, and `!hero` inspect server state without bypassing draft rules.
+
+Source-level regressions use plain Lua and Node, without third-party test packages. From the repository root:
+
+```bash
+lua "$PWD/tools/draft_pools_test.lua"
+lua "$PWD/game/scripts/vscripts/tests/death_draft_test.lua"
+node "$PWD/game/panorama/tests/draft_snapshot.test.js"
+```
+
+These checks cover mocked draft ownership/compatibility, death choices/timing, deterministic timer ordering, and Panorama snapshot behavior. They do not replace the in-game acceptance checks above.
 
 ## Offline tools (Phases 13–14)
 

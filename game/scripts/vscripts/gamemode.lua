@@ -290,6 +290,7 @@ function AILODGameMode:RosterPayload()
 		status = GameState:Is(GameState.LOBBY) and (self.lobbyStatus or "waiting_for_players") or GameState:Name(),
 		phase = GameState:Name(), total = #players, completed = completed, locked = PlayerState.roster ~= nil,
 		team_slots = 5, max_players = 10,
+		banned = table.concat(self.heroManager and self.heroManager:GetBannedList() or {}, ","),
 	}
 end
 
@@ -302,7 +303,10 @@ function AILODGameMode:PublishRoster(player)
 		CustomNetTables:SetTableValue("ai_lod_roster", "state", payload)
 		CustomNetTables:SetTableValue("ai_lod_match", "roster", payload)
 		CustomGameEventManager:Send_ServerToAllClients("ai_lod_roster", payload)
-		if GameState:Is(GameState.LOBBY) then CustomGameEventManager:Send_ServerToAllClients("ai_lod_lobby", payload) end
+		if GameState:Is(GameState.LOBBY) then
+			CustomNetTables:SetTableValue("ai_lod_match", "lobby", payload)
+			CustomGameEventManager:Send_ServerToAllClients("ai_lod_lobby", payload)
+		end
 	end
 end
 
@@ -379,6 +383,7 @@ function AILODGameMode:PreparePlayer(playerID, record)
 	end
 	record.prepared = true
 	record.preparedHero = hero
+	record.startingGold = PlayerResource.GetGold and PlayerResource:GetGold(playerID) or 0
 	hero.bAILODReady = true
 	return true
 end
@@ -404,6 +409,14 @@ function AILODGameMode:PreparationPayload()
 			team = PlayerState:GetTeam(playerID),
 			hero = record.hero or "",
 			ready = record.strategyReady and 1 or 0,
+			basic = table.concat(record.abilities.basic, ","),
+			ultimate = table.concat(record.abilities.ultimate, ","),
+			abilities = {
+				basic = table.concat(record.abilities.basic, ","),
+				ultimate = table.concat(record.abilities.ultimate, ","),
+			},
+			starting_gold = record.startingGold or (PlayerResource.GetGold and PlayerResource:GetGold(playerID)) or 0,
+			gold = PlayerResource.GetGold and PlayerResource:GetGold(playerID) or 0,
 		})
 	end)
 	return {

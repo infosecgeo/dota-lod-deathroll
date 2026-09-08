@@ -186,10 +186,29 @@ function DraftManager:SendHeroOffers(playerID)
 	if not player then return end
 	local o = self.heroOffers[playerID] or {}
 	local record = PlayerState:Get(playerID)
+	if not self.heroAbilityPreviews then
+		local byHero = {}
+		for name, definition in pairs(self.abilityManager.db or {}) do
+			if type(definition.hero) == "string" and self.abilityManager:ValidateAbility(name) then
+				byHero[definition.hero] = byHero[definition.hero] or {}
+				table.insert(byHero[definition.hero], name)
+			end
+		end
+		self.heroAbilityPreviews = {}
+		for hero, abilities in pairs(byHero) do
+			table.sort(abilities)
+			self.heroAbilityPreviews[hero] = Join(abilities)
+		end
+	end
+	local previews = {}
+	for _, category in ipairs(self.heroManager:GetCategories()) do
+		for _, hero in ipairs(o[category] or {}) do previews[hero] = self.heroAbilityPreviews[hero] or "" end
+	end
 	CustomGameEventManager:Send_ServerToPlayer(player, "ai_lod_hero_offers", {
 		strength = Join(o.Strength),
 		agility = Join(o.Agility),
 		intelligence = Join(o.Intelligence),
+		hero_abilities = previews,
 		reroll_str = record and record.rerolls.heroCategory1 or 0,
 		reroll_agi = record and record.rerolls.heroCategory2 or 0,
 		reroll_int = record and record.rerolls.heroCategory3 or 0,
@@ -218,7 +237,13 @@ function DraftManager:HandleHeroReroll(playerID, categoryName)
 	if not record or (record.rerolls[bucket] or 0) <= 0 then return end
 	local exclude = {}
 	for _, h in ipairs(offers[cat] or {}) do exclude[h] = true end
-	local replacement = self.heroManager:SampleCategory(cat, 4, exclude)
+	local hardExclude = {}
+	for _, other in ipairs(self.heroManager:GetCategories()) do
+		if other ~= cat then
+			for _, hero in ipairs(offers[other] or {}) do hardExclude[hero] = true end
+		end
+	end
+	local replacement = self.heroManager:SampleCategory(cat, 4, exclude, hardExclude)
 	if #replacement == 0 then return end
 	record.rerolls[bucket] = record.rerolls[bucket] - 1
 	offers[cat] = replacement
@@ -264,7 +289,17 @@ function DraftManager:RefreshHeroOffers()
 			for _, hero in ipairs(offers[category] or {}) do
 				if self.heroManager:IsAvailable(hero) then table.insert(available, hero) end
 			end
-			offers[category] = #available > 0 and available or self.heroManager:SampleCategory(category, 4, {})
+			if #available > 0 then
+				offers[category] = available
+			else
+				local hardExclude = {}
+				for _, other in ipairs(self.heroManager:GetCategories()) do
+					if other ~= category then
+						for _, hero in ipairs(offers[other] or {}) do hardExclude[hero] = true end
+					end
+				end
+				offers[category] = self.heroManager:SampleCategory(category, 4, {}, hardExclude)
+			end
 		end
 		self.heroOffers[playerID] = offers
 		record.heroPools = offers
