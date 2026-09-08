@@ -57,6 +57,9 @@ end
 DOTA_MAX_PLAYERS = 24
 DOTA_TEAM_GOODGUYS, DOTA_TEAM_BADGUYS, DOTA_TEAM_NEUTRALS = 2, 3, 4
 DOTA_CONNECTION_STATE_CONNECTED = 2
+DOTA_GAMERULES_STATE_HERO_SELECTION = 4
+DOTA_GAMERULES_STATE_STRATEGY_TIME = 5
+DOTA_GAMERULES_STATE_TEAM_SHOWCASE = 10
 DOTA_GAMERULES_STATE_CUSTOM_GAME_SETUP = 6
 DOTA_GAMERULES_STATE_PRE_GAME = 7
 DOTA_GAMERULES_STATE_GAME_IN_PROGRESS = 8
@@ -105,6 +108,7 @@ GameRules = {
 		SetPauseEnabled = function() end,
 		SetBotThinkingEnabled = function() end,
 		SetBotsInLateGame = function() end,
+		SetCustomGameForceHero = function(_, hero) GameRules.forcedHero = hero end,
 	} end,
 	ForceGameStart = function()
 		nativeState = DOTA_GAMERULES_STATE_GAME_IN_PROGRESS
@@ -332,16 +336,44 @@ check(PlayerState:Get(0).lobbyReady == true and PlayerState:Get(0).clientReady =
 	"lobby auto-ready without UI after grace")
 advance(5)
 phase(GameState.BAN, "lobby countdown starts the ban phase")
-owner.botManager:AutoBan(owner.banManager)
+check(owner.banManager.active == true, "ban phase is live before any bot hero lock")
+check(events.ai_lod_ban_start ~= nil, "ban UI payload published before hero draft")
+-- Bots must not lock a base hero during BAN.
 PlayerState:ForEachParticipant(function(id, record)
-	if PlayerState:IsBot(id) then check(#record.bannedHeroes > 0, "bots ban immediately") end
+	if PlayerState:IsBot(id) then
+		check(record.hero == nil, "bots have no base hero during ban")
+	end
 end)
-owner.banManager:Finish()
-phase(GameState.HERO_DRAFT)
 owner.botManager:AutoHero(owner.draftManager)
 PlayerState:ForEachParticipant(function(id, record)
-	if PlayerState:IsBot(id) then check(record.hero ~= nil, "bots pick random heroes") end
+	if PlayerState:IsBot(id) then
+		check(record.hero == nil, "AutoHero is a no-op until HERO_DRAFT")
+	end
 end)
+-- Ensure every bot has banned without finishing the phase early.
+owner.botManager:AutoBan(owner.banManager)
+PlayerState:ForEachParticipant(function(id, record)
+	if PlayerState:IsBot(id) then check(#record.bannedHeroes > 0, "bots ban during ban phase") end
+end)
+advance(2)
+phase(GameState.BAN, "ban stays open through minimum visible window")
+-- Human ban after the panel has been up; early-complete still respects BAN_MIN_VISIBLE.
+local humanBan = nil
+for _, hero in ipairs(owner.heroManager:LoadPool()) do
+	if owner.heroManager:IsAvailable(hero) then humanBan = hero break end
+end
+check(humanBan ~= nil, "human has a legal ban target")
+owner.banManager:HandleBan(0, humanBan)
+check(#PlayerState:Get(0).bannedHeroes > 0, "human ban recorded")
+phase(GameState.BAN, "all-ready ban waits for minimum visible time")
+advance(5)
+phase(GameState.HERO_DRAFT, "ban completes into hero draft only after bans")
+check(events.ai_lod_ban_end ~= nil, "ban end fires before hero locks")
+owner.botManager:AutoHero(owner.draftManager)
+PlayerState:ForEachParticipant(function(id, record)
+	if PlayerState:IsBot(id) then check(record.hero ~= nil, "bots pick random heroes only in hero draft") end
+end)
+check(PlayerState:Get(0).hero == nil, "human hero remains open after bot auto-picks")
 -- Human still open so phase stays active; finish via timeout path later in lifecycle tests.
 owner.draftManager:Cancel()
 GameState.current = GameState.LOBBY

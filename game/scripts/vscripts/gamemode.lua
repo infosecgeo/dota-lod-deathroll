@@ -27,6 +27,11 @@ local LOBBY_AUTO_READY_AFTER = 8
 local PREPARATION_TIMEOUT = 30
 local STRATEGY_TIME = 15
 local INTRODUCTION_TIME = 5
+-- Placeholder body only. Native HERO_SELECTION must not random-pick real heroes
+-- before BAN_HEROES; PreparePlayer replaces this with the drafted base.
+local PLACEHOLDER_HERO = "npc_dota_hero_wisp"
+-- Let ban/hero panels paint before bots commit instant picks.
+local BOT_DRAFT_ACTION_DELAY = 2
 
 function AILODGameMode:InitGameMode()
 	self.enableLodDraft = ENABLE_LOD_DRAFT
@@ -92,7 +97,12 @@ function AILODGameMode:SetupGameRules()
 	-- Only the bounded 15 + 5 second presentation consumes pregame time.
 	GameRules:SetPreGameTime(120)
 	local mode = GameRules:GetGameModeEntity()
-	-- Never SetCustomGameForceHero: final heroes belong to the completed draft.
+	-- LOD owns the final base hero after BAN → draft. Force a shared placeholder
+	-- so the engine cannot auto-assign real heroes (or bot picks) during the
+	-- zero-length native hero-selection window before PRE_GAME bans start.
+	if self.enableLodDraft and mode.SetCustomGameForceHero then
+		mode:SetCustomGameForceHero(PLACEHOLDER_HERO)
+	end
 	mode:SetRecommendedItemsDisabled(false)
 	mode:SetBuybackEnabled(true)
 	mode:SetPauseEnabled(false)
@@ -106,6 +116,17 @@ function AILODGameMode:SetupGameRules()
 	mode:SetDamageFilter(function() return not self.ended and GameState:Is(GameState.PLAYING) end, self)
 end
 
+function AILODGameMode:ScheduleBotDraftAction(expectedState, action)
+	if not self.botManager or type(action) ~= "function" then return end
+	local start = Time()
+	Timers:CreateTimer(function()
+		if self.ended or not GameState:Is(expectedState) then return nil end
+		if Time() < start + BOT_DRAFT_ACTION_DELAY then return 0.1 end
+		action(self.botManager)
+		return nil
+	end, false)
+end
+
 function AILODGameMode:RegisterStateHandlers()
 	GameState:OnEnter(GameState.BAN, function()
 		self.banManager:Start(function()
@@ -113,7 +134,11 @@ function AILODGameMode:RegisterStateHandlers()
 				GameState:Transition(GameState.GENERATE_HERO_POOLS)
 			end
 		end)
-		if self.botManager then self.botManager:AutoBan(self.banManager) end
+		-- Bots ban only after the ban phase is live — never before, and never as a
+		-- substitute for skipping BAN_HEROES into hero select.
+		self:ScheduleBotDraftAction(GameState.BAN, function(bots)
+			bots:AutoBan(self.banManager)
+		end)
 	end)
 	GameState:OnEnter(GameState.GENERATE_HERO_POOLS, function()
 		self.draftManager:GenerateHeroPools()
@@ -125,7 +150,9 @@ function AILODGameMode:RegisterStateHandlers()
 				GameState:Transition(GameState.ABILITY_DRAFT)
 			end
 		end)
-		if self.botManager then self.botManager:AutoHero(self.draftManager) end
+		self:ScheduleBotDraftAction(GameState.HERO_DRAFT, function(bots)
+			bots:AutoHero(self.draftManager)
+		end)
 	end)
 	GameState:OnEnter(GameState.ABILITY_DRAFT, function()
 		self.draftManager:StartAbilityDraft(function()
@@ -133,7 +160,9 @@ function AILODGameMode:RegisterStateHandlers()
 				GameState:Transition(GameState.INITIAL_ULTIMATE)
 			end
 		end)
-		if self.botManager then self.botManager:AutoAbilities(self.draftManager) end
+		self:ScheduleBotDraftAction(GameState.ABILITY_DRAFT, function(bots)
+			bots:AutoAbilities(self.draftManager)
+		end)
 	end)
 	GameState:OnEnter(GameState.INITIAL_ULTIMATE, function()
 		self.draftManager:StartInitialUltimate(function()
@@ -141,7 +170,9 @@ function AILODGameMode:RegisterStateHandlers()
 				GameState:Transition(GameState.ULTIMATE_DRAFT)
 			end
 		end)
-		if self.botManager then self.botManager:AutoInitialUlt(self.draftManager) end
+		self:ScheduleBotDraftAction(GameState.INITIAL_ULTIMATE, function(bots)
+			bots:AutoInitialUlt(self.draftManager)
+		end)
 	end)
 	GameState:OnEnter(GameState.ULTIMATE_DRAFT, function()
 		self.draftManager:StartUltimateDraft(function()
@@ -149,7 +180,9 @@ function AILODGameMode:RegisterStateHandlers()
 				GameState:Transition(GameState.BUILD_CONFIRMATION)
 			end
 		end)
-		if self.botManager then self.botManager:AutoBonusUlt(self.draftManager) end
+		self:ScheduleBotDraftAction(GameState.ULTIMATE_DRAFT, function(bots)
+			bots:AutoBonusUlt(self.draftManager)
+		end)
 	end)
 	GameState:OnEnter(GameState.BUILD_CONFIRMATION, function()
 		self.draftManager:StartBuildConfirmation(function()
@@ -157,7 +190,9 @@ function AILODGameMode:RegisterStateHandlers()
 				GameState:Transition(GameState.ABILITY_VALIDATION)
 			end
 		end)
-		if self.botManager then self.botManager:AutoBuild(self.draftManager) end
+		self:ScheduleBotDraftAction(GameState.BUILD_CONFIRMATION, function(bots)
+			bots:AutoBuild(self.draftManager)
+		end)
 	end)
 	GameState:OnEnter(GameState.ABILITY_VALIDATION, function()
 		local valid, changed = self.draftManager:ValidateAndRecover()
@@ -254,6 +289,15 @@ function AILODGameMode:OnGameRulesStateChange()
 	if self.ended then return end
 	if state == DOTA_GAMERULES_STATE_CUSTOM_GAME_SETUP then
 		self:StartCustomGameSetup()
+	elseif self.enableLodDraft and (
+			(DOTA_GAMERULES_STATE_HERO_SELECTION and state == DOTA_GAMERULES_STATE_HERO_SELECTION)
+			or (DOTA_GAMERULES_STATE_STRATEGY_TIME and state == DOTA_GAMERULES_STATE_STRATEGY_TIME)
+			or (DOTA_GAMERULES_STATE_TEAM_SHOWCASE and state == DOTA_GAMERULES_STATE_TEAM_SHOWCASE)
+		) then
+		-- Native selection is a zero-length placeholder window when LOD draft is on.
+		-- Keep the world frozen; real bans/picks happen only after PRE_GAME lobby.
+		self.draftPause = true
+		PauseGame(true)
 	elseif state == DOTA_GAMERULES_STATE_PRE_GAME then
 		self.draftPause = true
 		PauseGame(true)

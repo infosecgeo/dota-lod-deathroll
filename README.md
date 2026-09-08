@@ -74,7 +74,7 @@ local SETUP_COUNTDOWN = 10     -- native team-select countdown → FinishCustomG
 local LOBBY_COUNTDOWN = 5      -- LOD lobby countdown → BAN_HEROES
 ```
 
-**Playable lobby path:** custom game setup auto-assigns unassigned humans/bots onto Radiant/Dire, fills remaining slots with hard AI bots, shows a 10s setup countdown, launches into PRE_GAME, then runs the 5s LOD lobby countdown (auto-ready if the UI never reports ready) before bans.
+**Playable lobby path:** custom game setup auto-assigns unassigned humans/bots onto Radiant/Dire, fills remaining slots with hard AI bots, shows a 10s setup countdown, launches through a zero-length native hero-selection window (forced placeholder `wisp` only — no real auto-picks), then PRE_GAME runs the 5s LOD lobby countdown (auto-ready if the UI never reports ready) **before BAN_HEROES**. Bots only ban/pick after each LOD phase is live; they never lock a base hero before bans.
 
 ## Roadmap
 

@@ -5,6 +5,8 @@ local DraftRandom = require("systems/seeded_random")
 
 local TEAM_SIZE = 5
 local BOT_DIFFICULTY = "hard"
+-- Temporary body only; LOD replaces this after BAN → hero draft.
+local PLACEHOLDER_HERO = "npc_dota_hero_wisp"
 local NAME_PREFIX = {
 	"Iron", "Shadow", "Crimson", "Azure", "Silent", "Storm", "Jade", "Grim",
 	"Swift", "Hollow", "Golden", "Ashen", "Rogue", "Frost", "Solar", "Night",
@@ -157,21 +159,27 @@ function BotManager:TryAddBot(team, name)
 
 	local addedID = nil
 	if GameRules.AddBotPlayerWithEntityScript then
-		local ok, result = pcall(function()
-			-- Empty hero: LOD owns hero creation after the draft completes.
-			-- false = add immediately so team assignment sticks during setup.
-			return GameRules:AddBotPlayerWithEntityScript("", name, team, "", false)
-		end)
-		if ok and type(result) == "number" and result >= 0 and result < DOTA_MAX_PLAYERS then
-			addedID = result
+		-- Prefer an empty hero name so native selection cannot treat the bot as
+		-- having locked a real pick before BAN_HEROES. Fall back to the shared
+		-- placeholder body only when the engine rejects an empty name.
+		for _, heroName in ipairs({ "", PLACEHOLDER_HERO }) do
+			if addedID ~= nil then break end
+			local ok, result = pcall(function()
+				-- false = add immediately so team assignment sticks during setup.
+				return GameRules:AddBotPlayerWithEntityScript(heroName, name, team, "", false)
+			end)
+			if ok and type(result) == "number" and result >= 0 and result < DOTA_MAX_PLAYERS then
+				addedID = result
+			end
 		end
 	end
 
 	if addedID == nil and Tutorial and Tutorial.AddBot then
-		-- Fallback: engine bot join. Hero is replaced after draft.
+		-- Last-resort engine bot join. Always the placeholder — never a random
+		-- competitive hero — so ban still runs before any real base is locked.
 		local radiant = team == DOTA_TEAM_GOODGUYS
 		pcall(function()
-			Tutorial:AddBot("npc_dota_hero_wisp", "mid", BOT_DIFFICULTY, radiant)
+			Tutorial:AddBot(PLACEHOLDER_HERO, "mid", BOT_DIFFICULTY, radiant)
 		end)
 	end
 
@@ -240,7 +248,9 @@ function BotManager:ForEachBot(callback)
 end
 
 function BotManager:AutoBan(banManager)
+	-- Only legal during the live ban phase; never invent pre-ban hero locks.
 	if not banManager or not banManager.active then return end
+	if GameState and not GameState:Is(GameState.BAN) then return end
 	local pool = banManager.heroManager and banManager.heroManager:LoadPool() or {}
 	self:ForEachBot(function(playerID, _)
 		if banManager.playerBanned[playerID] then return end
@@ -255,7 +265,9 @@ function BotManager:AutoBan(banManager)
 end
 
 function BotManager:AutoHero(draftManager)
+	-- Hero locks are illegal until BAN_HEROES has fully completed.
 	if not draftManager or draftManager.phase ~= "hero" then return end
+	if GameState and not GameState:Is(GameState.HERO_DRAFT) then return end
 	self:ForEachBot(function(playerID, _)
 		if draftManager.heroPicks[playerID] then return end
 		local offers = draftManager.heroOffers[playerID] or {}
