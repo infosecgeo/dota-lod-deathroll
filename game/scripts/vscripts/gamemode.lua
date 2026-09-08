@@ -92,10 +92,10 @@ function AILODGameMode:RegisterStateHandlers()
 				GameState:Transition(GameState.GENERATE_HERO_POOLS)
 			end
 		end)
-		GameState:OnEnter(GameState.GENERATE_HERO_POOLS, function()
-			self.draftManager:GenerateHeroPools()
-			GameState:Transition(GameState.HERO_DRAFT)
-		end)
+	end)
+	GameState:OnEnter(GameState.GENERATE_HERO_POOLS, function()
+		self.draftManager:GenerateHeroPools()
+		GameState:Transition(GameState.HERO_DRAFT)
 	end)
 	GameState:OnEnter(GameState.HERO_DRAFT, function()
 		self.draftManager:StartHeroDraft(function()
@@ -110,12 +110,12 @@ function AILODGameMode:RegisterStateHandlers()
 				GameState:Transition(GameState.INITIAL_ULTIMATE)
 			end
 		end)
-		GameState:OnEnter(GameState.INITIAL_ULTIMATE, function()
-			self.draftManager:StartInitialUltimate(function()
-				if not self.ended and GameState:Is(GameState.INITIAL_ULTIMATE) then
-					GameState:Transition(GameState.ULTIMATE_DRAFT)
-				end
-			end)
+	end)
+	GameState:OnEnter(GameState.INITIAL_ULTIMATE, function()
+		self.draftManager:StartInitialUltimate(function()
+			if not self.ended and GameState:Is(GameState.INITIAL_ULTIMATE) then
+				GameState:Transition(GameState.ULTIMATE_DRAFT)
+			end
 		end)
 	end)
 	GameState:OnEnter(GameState.ULTIMATE_DRAFT, function()
@@ -124,19 +124,19 @@ function AILODGameMode:RegisterStateHandlers()
 				GameState:Transition(GameState.BUILD_CONFIRMATION)
 			end
 		end)
-		GameState:OnEnter(GameState.BUILD_CONFIRMATION, function()
-			self.draftManager:StartBuildConfirmation(function()
-				if not self.ended and GameState:Is(GameState.BUILD_CONFIRMATION) then
-					GameState:Transition(GameState.ABILITY_VALIDATION)
-				end
-			end)
+	end)
+	GameState:OnEnter(GameState.BUILD_CONFIRMATION, function()
+		self.draftManager:StartBuildConfirmation(function()
+			if not self.ended and GameState:Is(GameState.BUILD_CONFIRMATION) then
+				GameState:Transition(GameState.ABILITY_VALIDATION)
+			end
 		end)
-		GameState:OnEnter(GameState.ABILITY_VALIDATION, function()
-			local valid, changed = self.draftManager:ValidateAndRecover()
-			if not valid then self:AbortPreparation("invalid_build")
-			elseif changed then GameState:Transition(GameState.BUILD_CONFIRMATION)
-			else self:PrepareHeroes() end
-		end)
+	end)
+	GameState:OnEnter(GameState.ABILITY_VALIDATION, function()
+		local valid, changed = self.draftManager:ValidateAndRecover()
+		if not valid then self:AbortPreparation("invalid_build")
+		elseif changed then GameState:Transition(GameState.BUILD_CONFIRMATION)
+		else self:PrepareHeroes() end
 	end)
 	GameState:OnEnter(GameState.STRATEGY, function() self:StartStrategy() end)
 	GameState:OnEnter(GameState.INTRODUCTION, function() self:StartIntroduction() end)
@@ -176,6 +176,7 @@ function AILODGameMode:RegisterEvents()
 		ai_lod_death_skip = "OnDeathSkip",
 		ai_lod_client_ready = "OnClientReady",
 		ai_lod_strategy_ready = "OnStrategyReady",
+		ai_lod_strategy_lane = "OnStrategyLane",
 		lod_pick_hero = "OnPickHero",
 		lod_pick_ability = "OnPickAbility",
 	}
@@ -232,6 +233,13 @@ function AILODGameMode:BeginMatchFlow()
 		if ready and not self.lobbyDeadline then self.lobbyDeadline = Time() + LOBBY_COUNTDOWN end
 		self:PublishRoster()
 		if ready and Time() >= self.lobbyDeadline then
+			if IsInToolsMode() then
+				local seed = Convars:GetInt("ai_lod_seed")
+				if seed and seed ~= 0 then
+					self.draftSeed = seed
+					DraftRandom:Init(seed)
+				end
+			end
 			PlayerState:LockRoster()
 			if self.enableLodDraft then
 				GameState:Transition(GameState.BAN)
@@ -279,6 +287,7 @@ function AILODGameMode:RosterPayload()
 			hero = record.hero or "", ready = ready and 1 or 0, draft_state = record.draftState,
 			basic_count = #record.abilities.basic, ultimate_count = #record.abilities.ultimate,
 			connected = PlayerState:IsConnected(playerID) and 1 or 0,
+			lane = record.lane or "",
 		})
 	end)
 	local deadline = GameState:Is(GameState.LOBBY) and self.lobbyDeadline
@@ -300,7 +309,6 @@ function AILODGameMode:PublishRoster(player)
 		CustomGameEventManager:Send_ServerToPlayer(player, "ai_lod_roster", payload)
 		if GameState:Is(GameState.LOBBY) then CustomGameEventManager:Send_ServerToPlayer(player, "ai_lod_lobby", payload) end
 	else
-		CustomNetTables:SetTableValue("ai_lod_roster", "state", payload)
 		CustomNetTables:SetTableValue("ai_lod_match", "roster", payload)
 		CustomGameEventManager:Send_ServerToAllClients("ai_lod_roster", payload)
 		if GameState:Is(GameState.LOBBY) then
@@ -335,8 +343,13 @@ function AILODGameMode:PrepareHeroes()
 	if self.preparing or self.ended then return end
 	self.preparing = true
 	local deadline = Time() + PREPARATION_TIMEOUT
+	self.preparationDeadline = deadline
 	Timers:CreateTimer(function()
 		if self.ended then return end
+		if Time() >= deadline then
+			self:AbortPreparation()
+			return
+		end
 		local complete = true
 		PlayerState:ForEachParticipant(function(playerID, record)
 			if record.prepared then return end
@@ -351,23 +364,32 @@ function AILODGameMode:PrepareHeroes()
 			GameState:Transition(GameState.STRATEGY)
 			return
 		end
-		if Time() >= deadline then
-			self:AbortPreparation()
-			return
-		end
 		return 1
 	end, false)
 end
 
 function AILODGameMode:PreparePlayer(playerID, record)
+	if self.ended or (self.preparationDeadline and Time() >= self.preparationDeadline) then return false end
 	if self.enableLodDraft and (not record.buildConfirmed or not record.draftLocked
 		or not self.draftManager:ValidateBuild(playerID, record)) then return false end
+	if self.enableLodDraft then
+		local buildKey = record.hero .. "|" .. table.concat(record.abilities.basic, ",")
+			.. "|" .. table.concat(record.abilities.ultimate, ",")
+		if record.precacheBuildKey ~= buildKey then
+			record.precacheBuildKey = buildKey
+			record.precacheToken = (record.precacheToken or 0) + 1
+			record.precacheStarted, record.precacheReady, record.precacheError = false, false, nil
+		end
+	end
 	if self.enableLodDraft and not record.precacheReady then
 		if not record.precacheStarted then
 			record.precacheStarted = true
+			local token = record.precacheToken
 			self.abilityManager:PrecacheBuild(record.hero, record.abilities.basic, record.abilities.ultimate, playerID,
 				function(ok, reason)
-					if self.ended or not GameState:Is(GameState.ABILITY_VALIDATION) then return end
+					if self.ended or not GameState:Is(GameState.ABILITY_VALIDATION)
+						or record.precacheToken ~= token
+						or (self.preparationDeadline and Time() >= self.preparationDeadline) then return end
 					record.precacheReady = ok
 					record.precacheError = reason
 				end)
@@ -409,6 +431,7 @@ function AILODGameMode:PreparationPayload()
 			team = PlayerState:GetTeam(playerID),
 			hero = record.hero or "",
 			ready = record.strategyReady and 1 or 0,
+			lane = record.lane or "",
 			basic = table.concat(record.abilities.basic, ","),
 			ultimate = table.concat(record.abilities.ultimate, ","),
 			abilities = {
@@ -533,6 +556,16 @@ function AILODGameMode:OnStrategyReady(playerID)
 	if self.ended or not PlayerState:IsParticipant(playerID) or not GameState:Is(GameState.STRATEGY)
 		or Time() >= self.presentationDeadline then return end
 	PlayerState:Get(playerID).strategyReady = true
+	self:SendPreparation()
+	self:PublishRoster()
+end
+
+function AILODGameMode:OnStrategyLane(playerID, event)
+	if self.ended or not GameState:Is(GameState.STRATEGY) or not PlayerState:IsParticipant(playerID)
+		or not self.presentationDeadline or Time() >= self.presentationDeadline then return end
+	local lane = event.lane
+	if lane ~= "top" and lane ~= "mid" and lane ~= "bottom" and lane ~= "jungle" then return end
+	PlayerState:Get(playerID).lane = lane
 	self:SendPreparation()
 	self:PublishRoster()
 end

@@ -60,6 +60,7 @@ end
 function DraftManager:BeginPhase(phase, duration, onComplete)
 	self:Cancel()
 	self.phase = phase
+	self.phaseGeneration = (self.phaseGeneration or 0) + 1
 	self.onComplete = onComplete
 	self.finished = false
 	self.active = true
@@ -96,8 +97,9 @@ function DraftManager:PublishRoster()
 end
 
 function DraftManager:StartTimer(phase, event, finish)
+	local generation = self.phaseGeneration
 	self.timer = Timers:CreateTimer(function()
-		if not self.active or self.finished or self.phase ~= phase then return nil end
+		if not self.active or self.finished or self.phase ~= phase or self.phaseGeneration ~= generation then return nil end
 		self.timeLeft = math.max(0, math.ceil(self.deadline - Time()))
 		CustomGameEventManager:Send_ServerToAllClients(event, { time = self.timeLeft })
 		self:PublishRoster()
@@ -108,7 +110,7 @@ function DraftManager:StartTimer(phase, event, finish)
 				self:Fail("draft_timeout_failed")
 				return nil
 			end
-			if not self.active or self.finished or self.phase ~= phase then return nil end
+			if not self.active or self.finished or self.phase ~= phase or self.phaseGeneration ~= generation then return nil end
 			self:Fail("draft_timeout_recovery_failed")
 			return nil
 		end

@@ -551,9 +551,6 @@ CustomNetTables.SubscribeNetTableListener("ai_lod_match", function (table, key, 
 	if (key === "lobby") RenderLobby(data);
 	if (key === "preparation") RenderPreparation(data);
 });
-CustomNetTables.SubscribeNetTableListener("ai_lod_roster", function (table, key, data) {
-	if (key === "state") RenderRoster(data);
-});
 HideAll();
 RenderRoster(CustomNetTables.GetTableValue("ai_lod_match", "roster"));
 lobbySnapshot = CustomNetTables.GetTableValue("ai_lod_match", "lobby");

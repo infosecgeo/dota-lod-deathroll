@@ -168,6 +168,7 @@ local function mockHero()
 	function hero:GetUnitName() return "npc_dota_hero_axe" end
 	function hero:GetPlayerOwnerID() return self.playerID end
 	function hero:HasScepter() return self.scepter == true end
+	function hero:HasShard() return self.shard == true end
 	function hero:GetAbilityCount() return #self.abilities end
 	function hero:GetAbilityByIndex(index) return self.abilities[index + 1] end
 	function hero:FindAbilityByName(name)
@@ -182,7 +183,8 @@ local function mockHero()
 	function hero:FindAllModifiers() return self.modifiers end
 	function hero:AddAbility(name)
 		if name == self.failName then return nil end
-		local ability = { name = name, level = 0, cooldown = 17, charges = 2, index = #self.abilities }
+		local ability = { name = name, level = 0, cooldown = 17, charges = 2,
+			index = #self.abilities, hidden = name == self.hiddenName }
 		function ability:IsNull() return false end
 		function ability:GetAbilityName() return self.name end
 		function ability:GetMaxLevel() return 4 end
@@ -295,15 +297,56 @@ local failed = false
 manager:PrecacheBuild("npc_dota_hero_abaddon", { "a", "b", "d" }, { "u", "v" }, 25,
 	function(ok) failed = not ok end)
 check(failed and manager.precachedUnits.npc_dota_hero_abaddon == nil, "precache failure fails closed")
+hero.hiddenName, hero.scepter = "e", false
+check(not manager:ApplyDraftChanges(hero, { "a", "b", "d" }, { "u", "v" },
+	{ "a", "e", "d" }, { "u", "v" }), "hidden allowlisted upgrade still requires item")
+check(not manager:PrepareAbilities(hero, { e = 1 }), "direct staging enforces required upgrade")
+hero.scepter = true
+check(not manager:ApplyDraftChanges(hero, { "a", "b", "d" }, { "u", "v" },
+	{ "e", "b", "d" }, { "u", "v" }), "hidden allowlisted upgrade still requires parent")
+check(manager:ApplyDraftChanges(hero, { "a", "b", "d" }, { "u", "v" },
+	{ "a", "e", "d" }, { "u", "v" }), "supported hidden upgrade handle stages")
+check(not hero:FindAbilityByName("e"):IsHidden(), "supported upgrade revealed after staging")
+hero.hiddenName, manager.db.c.incompatible = "c", nil
+check(not manager:ApplyDraftChanges(hero, { "a", "e", "d" }, { "u", "v" },
+	{ "a", "c", "d" }, { "u", "v" }), "nonallowlisted hidden handle rejected")
+check(hero:FindAbilityByName("e") and not hero:FindAbilityByName("c")
+	and manager.usedAbilities.e == 25 and manager.usedAbilities.c == nil, "hidden failure rolls back ownership and handle")
 GetAbilityKeyValuesByName = function(name)
 	if name == "a" then return { AbilityCooldown = "8 7 6 5", AbilityManaCost = "100" } end
 	if name == "b" then return { AbilityBehavior = "DOTA_ABILITY_BEHAVIOR_HIDDEN" } end
 	if name == "d" then return { AbilityBehavior = 3 } end
+	if name == "e" then return { AbilityBehavior = "DOTA_ABILITY_BEHAVIOR_HIDDEN", IsGrantedByScepter = "1" } end
+	if name == "zuus_cloud" then
+		return { AbilityBehavior = "DOTA_ABILITY_BEHAVIOR_HIDDEN", IsGrantedByScepter = "1" }
+	end
+	if name == "slark_depth_shroud" then
+		return { AbilityBehavior = 1, IsGrantedByShard = "1" }
+	end
+	if name == "zuus_lightning_bolt" or name == "slark_shadow_dance" then
+		return { AbilityCooldown = "10" }
+	end
 end
 check(manager:ValidateAbility("a"), "installed engine definition")
 check(not manager:ValidateAbility("b"), "hidden engine definition")
 check(not manager:ValidateAbility("c"), "missing installed definition")
 check(not manager:ValidateAbility("d"), "numeric hidden engine flag")
+check(manager:ValidateAbility("e"), "explicit upgrade allowlist permits static hidden flag")
+hero.scepter = false
+check(not manager:IsCompatible("e", { "a" }, hero), "static hidden exception does not bypass item")
+hero.scepter = true
+check(not manager:IsCompatible("e", {}, hero), "static hidden exception does not bypass dependency")
+check(manager:IsCompatible("e", { "a" }, hero), "static hidden upgrade with item and dependency allowed")
 check(manager:GetAbilityMetadata("a").cooldown == "8 7 6 5", "engine tooltip metadata")
+check(abilities:ValidateAbility("zuus_cloud") and abilities:ValidateAbility("slark_depth_shroud"),
+	"configured hidden Scepter and Shard allowlist entries")
+hero.scepter = false
+check(not abilities:IsCompatible("zuus_cloud", { "zuus_lightning_bolt" }, hero), "configured cloud requires Scepter")
+hero.scepter = true
+check(abilities:IsCompatible("zuus_cloud", { "zuus_lightning_bolt" }, hero), "configured cloud allowed with Scepter and bolt")
+check(not abilities:IsCompatible("slark_depth_shroud", { "slark_shadow_dance" }, hero), "configured shroud requires Shard")
+hero.shard = true
+check(not abilities:IsCompatible("slark_depth_shroud", {}, hero), "configured shroud requires shadow dance")
+check(abilities:IsCompatible("slark_depth_shroud", { "slark_shadow_dance" }, hero), "configured shroud allowed with Shard and parent")
 print(string.format("Draft pool checks passed: %d (curated capacity: %d basic, %d ultimate)",
 	checks, #pools.regular, #pools.ultimate))

@@ -29,6 +29,7 @@ local function NewPlayerRecord(playerID)
 		lobbyReady = false,
 		buildConfirmed = false,
 		strategyReady = false,
+		lane = "",
 		prepared = false,
 	}
 end

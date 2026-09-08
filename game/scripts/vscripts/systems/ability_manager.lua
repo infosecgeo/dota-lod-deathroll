@@ -185,8 +185,9 @@ function AbilityManager:ValidateAbility(name)
 	end
 	local behavior = engine and tonumber(engine.AbilityBehavior)
 	local hiddenFlag = DOTA_ABILITY_BEHAVIOR_HIDDEN or 1
-	if engine and (tostring(engine.AbilityBehavior):find("DOTA_ABILITY_BEHAVIOR_HIDDEN", 1, true)
-		or behavior and behavior % (hiddenFlag * 2) >= hiddenFlag
+	local hidden = engine and (tostring(engine.AbilityBehavior):find("DOTA_ABILITY_BEHAVIOR_HIDDEN", 1, true)
+		or behavior and behavior % (hiddenFlag * 2) >= hiddenFlag)
+	if engine and (hidden and not self.upgrades[name]
 		or tonumber(engine.IsGrantedByScepter) == 1 and not def.upgrade
 		or tonumber(engine.IsGrantedByShard) == 1 and not def.upgrade) then
 		return false, "internal_ability"
@@ -591,16 +592,25 @@ function AbilityManager:PrepareAbilities(hero, desired)
 		if ability and not ability:IsNull() then before[ability:GetAbilityName()] = true end
 	end
 	local ok, reason = pcall(function()
-		local names = {}
-		for name in pairs(desired) do table.insert(names, name) end
+		local names, kitSet = {}, {}
+		for name in pairs(before) do kitSet[name] = true end
+		for name in pairs(desired) do
+			table.insert(names, name)
+			kitSet[name] = true
+		end
 		table.sort(names)
 		for _, name in ipairs(names) do
 			if not self:ValidateAbility(name) then error("invalid_ability:" .. name) end
+			if self.upgrades[name] and not self:ValidateAbilityRequirements(name, kitSet, hero) then
+				error("missing_upgrade_requirement:" .. name)
+			end
 			if not hero:FindAbilityByName(name) then
 				-- Leave staged spells untrained until every engine handle exists.
 				local ability = hero:AddAbility(name)
 				if not ability or ability:IsNull() then error("add_failed:" .. name) end
-				if ability.IsHidden and ability:IsHidden() then error("hidden_ability:" .. name) end
+				if ability.IsHidden and ability:IsHidden() and not self.upgrades[name] then
+					error("hidden_ability:" .. name)
+				end
 			end
 		end
 		for _, name in ipairs(names) do

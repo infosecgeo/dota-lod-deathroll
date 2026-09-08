@@ -167,6 +167,8 @@ The lobby requires ready participants and both teams in normal games; Workshop T
 
 Death drafts last **up to 25 seconds or the remaining normal respawn time, whichever is shorter**, and respect gameplay pauses. They neither delay nor accelerate respawn. Buyback is blocked only while a death draft is pending; skipping closes it immediately.
 
+Before installing a build, the server asynchronously precaches its base hero and ability-donor heroes. Death replacements lock editing while resources load, but **Skip** remains available. Late callbacks cannot apply a skipped, expired, or superseded choice.
+
 The current conservative upgrade allowlist consumes basic slots:
 
 | Ability | Required upgrade | Required drafted parent |
@@ -215,11 +217,12 @@ Source-level regressions use plain Lua and Node, without third-party test packag
 
 ```bash
 lua "$PWD/tools/draft_pools_test.lua"
+lua "$PWD/tools/draft_flow_test.lua"
 lua "$PWD/game/scripts/vscripts/tests/death_draft_test.lua"
 node "$PWD/game/panorama/tests/draft_snapshot.test.js"
 ```
 
-These checks cover mocked draft ownership/compatibility, death choices/timing, deterministic timer ordering, and Panorama snapshot behavior. They do not replace the in-game acceptance checks above.
+These checks cover ten-player seeded draft replay, ownership/compatibility, phase guards/recovery, death choices/timing and asset-loading races, deterministic timer ordering, and Panorama snapshot behavior using mocked engine APIs. They do not replace the in-game acceptance checks above.
 
 ## Offline tools (Phases 13–14)
 
